@@ -1,0 +1,26 @@
+{
+  "name": "ai2live",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Live2D Asset Compiler / Rigging Agent — LayerManifest → PSD → AutoLive2d / psd2live",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "lint": "pnpm -r run lint --if-present",
+    "ai2live": "pnpm --filter @ai2live/cli exec ai2live",
+    "compile:example": "pnpm --filter @ai2live/cli exec ai2live compile ../../examples/simple-character",
+    "validate:example": "pnpm --filter @ai2live/cli exec ai2live validate ../../examples/simple-character"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "sharp": "^0.33.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

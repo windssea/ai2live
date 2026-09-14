@@ -1,0 +1,17 @@
+{
+  "name": "@ai2live/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo skip"
+  },
+  "dependencies": {
+    "@ai2live/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.0"
+  }
+}

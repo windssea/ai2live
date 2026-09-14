@@ -1,0 +1,9 @@
+[project]
+name = "ai2live-image-worker"
+version = "0.1.0"
+description = "Stub image worker for AI Live2D Asset Compiler"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]

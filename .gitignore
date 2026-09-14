@@ -1,0 +1,22 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.turbo/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+builds/
+**/validation/report.json
+**/psd/*.psd
+**/previews/recomposed_*.png
+**/assets/sha256/
+.pnpm-store/
+docs-DESIGN-SOURCE.md
+# keep example source assets; ignore generated outputs under examples
+examples/**/builds/
+examples/**/psd/
+examples/**/validation/
+examples/**/previews/recomposed_*.png

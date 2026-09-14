@@ -1,0 +1,11 @@
+{
+  "name": "@ai2live/studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo 'studio stub'",
+    "test": "echo skip",
+    "dev": "echo 'studio UI planned for M6'"
+  }
+}

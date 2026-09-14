@@ -1,0 +1,29 @@
+{
+  "name": "@ai2live/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ai2live": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "ai2live": "node ./dist/cli.js"
+  },
+  "dependencies": {
+    "@ai2live/domain": "workspace:*",
+    "@ai2live/manifest-schema": "workspace:*",
+    "@ai2live/history": "workspace:*",
+    "@ai2live/psd-compiler": "workspace:*",
+    "@ai2live/qc-engine": "workspace:*",
+    "@ai2live/autolive2d-adapter": "workspace:*",
+    "@ai2live/psd2live-adapter": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.0"
+  }
+}
