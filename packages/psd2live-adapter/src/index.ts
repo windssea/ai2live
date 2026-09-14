@@ -3,7 +3,7 @@ import path from "node:path";
 import { createStableId } from "@ai2live/domain";
 
 /**
- * psd2live downstream adapter (M0).
+ * psd2live downstream adapter.
  * Writes an import package for an EXTERNAL psd2live process/MCP.
  * Does NOT vendor or copy GPL psd2live source.
  */
@@ -61,7 +61,6 @@ export async function buildPsd2LivePackage(
     warnings.push("import_manifest.json missing");
   }
 
-  // External protocol descriptor — points at MCP/CLI, never embeds GPL code
   const protocol = {
     version: "0.1",
     backend: "psd2live",
@@ -93,35 +92,18 @@ export async function buildPsd2LivePackage(
   );
   files.push("README.md");
 
-  // Copy layer PNGs reference list for optional direct asset import path
   if (await exists(importManifestPath)) {
     const man = JSON.parse(await readFile(importManifestPath, "utf8"));
     await writeFile(
       path.join(outDir, "layer_index.json"),
-      JSON.stringify(
-        {
-          build_id: buildId,
-          layers: man.layers,
-        },
-        null,
-        2
-      )
+      JSON.stringify({ build_id: buildId, layers: man.layers }, null, 2)
     );
     files.push("layer_index.json");
   }
 
   await writeFile(
     path.join(outDir, "build_result.json"),
-    JSON.stringify(
-      {
-        backend: "psd2live",
-        build_id: buildId,
-        warnings,
-        invoke_hint,
-      },
-      null,
-      2
-    )
+    JSON.stringify({ backend: "psd2live", build_id: buildId, warnings, invoke_hint }, null, 2)
   );
   files.push("build_result.json");
 
@@ -134,3 +116,5 @@ export async function buildPsd2LivePackage(
     invoke_hint,
   };
 }
+
+export { writePsd2LiveDeepSession, checkExternalPsd2Live } from "./deep.js";
