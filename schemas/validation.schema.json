@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai2live.dev/schemas/validation.schema.json",
+  "title": "ValidationReport",
+  "description": "Static / pose QC report for LayerManifest pipelines",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "project_path", "passed", "findings", "metrics"],
+  "properties": {
+    "id": { "type": "string" },
+    "version": { "type": "string", "const": "0.1" },
+    "project_path": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "passed": { "type": "boolean" },
+    "gate": {
+      "type": "string",
+      "enum": [
+        "GATE0_MASTER",
+        "GATE1_LAYER_PLAN",
+        "GATE2_VISIBLE_FIDELITY",
+        "GATE3_COMPOSITE_FIDELITY",
+        "GATE4_OVERLAP",
+        "GATE5_GENERATED_CONSISTENCY",
+        "GATE6_PSD_ROUNDTRIP",
+        "GATE7_RIG_POSE",
+        "GATE8_EDITABILITY",
+        "STATIC_QC"
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mse": { "type": "number" },
+        "mae": { "type": "number" },
+        "psnr": { "type": "number" },
+        "max_abs_diff": { "type": "number" },
+        "alpha_mismatch_ratio": { "type": "number" },
+        "compared_pixels": { "type": "integer" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ValidationFinding" }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "ValidationFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "severity": {
+          "type": "string",
+          "enum": ["INFO", "WARNING", "ERROR"]
+        },
+        "type": { "type": "string" },
+        "backend": { "type": "string" },
+        "pose": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "region_canvas": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" }
+        },
+        "related_layers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hypothesis": { "type": "string" },
+        "recommended_action": { "type": "string" },
+        "source_screenshot": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}
