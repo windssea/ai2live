@@ -51,3 +51,21 @@ PSD layer names: `<semantic>_<side>_<index>__<short-id>` (e.g. `front_hair_c_01_
 ## Milestones
 
 See [ROADMAP.md](../ROADMAP.md). Full design: [DESIGN.md](./DESIGN.md).
+
+## Packages (M1–M6)
+
+| Package | Milestone | Role |
+|---------|-----------|------|
+| `segmentation` | M1 | See-through / stub masks from master |
+| `occlusion` | M2 | Three-scenario hidden completion stubs |
+| `expression` | M3 | Full-character expression differentials |
+| `repair` | M4 | Pose grid + diagnosis + repair plan |
+| `psd2live-adapter` deep session | M5 | External MCP/CLI protocol |
+| `product` | M6 | Budget, retry, human handoff |
+| `agent-runtime` | M6 | Default unattended plan |
+
+## CLI surface
+
+```text
+ai2live compile|validate|segment|occlusion|expressions|repair|downstream|unattended <project>
+```
