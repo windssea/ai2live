@@ -1,29 +1,29 @@
 # Roadmap
 
-## M0 — Deterministic Layer Package ✅ (this PR)
+## M0 — Deterministic Layer Package
 
 Hand-authored RGBA + LayerManifest → PSD → adapter packages + static QC.
 
 ## M1 — Master → Mask → PSD
 
-Segmentation stub + see-through fallback; still no hidden-region generation.
+See-through / stub segmentation (`ai2live segment`) writing `masks/` + draft layers.
 
 ## M2 — Occlusion Completion
 
-Three scenarios: bangs under face, face over back hair, body over arm root.
+Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, body over arm root.
 
 ## M3 — Expression Differentials
 
-Mouth open, eye close, smile, one special eye — full-character differentials first.
+`ai2live expressions`: mouth open, eye close, smile, special eye (full-character differentials).
 
 ## M4 — Agent Repair Loop
 
-Pose grid screenshots, diagnosis hooks, local repair strategies.
+`ai2live repair`: pose grid stubs, diagnosis hooks, repair plan (no blind STALE_HEAD retries).
 
 ## M5 — psd2live Deep Integration
 
-External CLI/MCP protocol: import → build → pose shots → cmo3/moc3. No GPL copy.
+`ai2live downstream --deep`: external MCP/CLI session script only — **no GPL copy**.
 
 ## M6 — Unattended Product
 
-Retry/cost budgets, history UI stubs, human handoff, eval dashboard hooks.
+`ai2live unattended`: budget/retry/handoff stubs + default plan + smoke eval.

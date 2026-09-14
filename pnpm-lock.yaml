@@ -26,18 +26,30 @@ importers:
 
   apps/cli:
     dependencies:
+      '@ai2live/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@ai2live/autolive2d-adapter':
         specifier: workspace:*
         version: link:../../packages/autolive2d-adapter
       '@ai2live/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@ai2live/expression':
+        specifier: workspace:*
+        version: link:../../packages/expression
       '@ai2live/history':
         specifier: workspace:*
         version: link:../../packages/history
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../../packages/manifest-schema
+      '@ai2live/occlusion':
+        specifier: workspace:*
+        version: link:../../packages/occlusion
+      '@ai2live/product':
+        specifier: workspace:*
+        version: link:../../packages/product
       '@ai2live/psd-compiler':
         specifier: workspace:*
         version: link:../../packages/psd-compiler
@@ -47,6 +59,12 @@ importers:
       '@ai2live/qc-engine':
         specifier: workspace:*
         version: link:../../packages/qc-engine
+      '@ai2live/repair':
+        specifier: workspace:*
+        version: link:../../packages/repair
+      '@ai2live/segmentation':
+        specifier: workspace:*
+        version: link:../../packages/segmentation
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -77,6 +95,13 @@ importers:
   apps/studio: {}
 
   packages/agent-runtime:
+    dependencies:
+      '@ai2live/history':
+        specifier: workspace:*
+        version: link:../history
+      '@ai2live/product':
+        specifier: workspace:*
+        version: link:../product
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -105,6 +130,28 @@ importers:
         version: 2.1.9(@types/node@22.20.2)
 
   packages/domain:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/expression:
+    dependencies:
+      '@ai2live/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ai2live/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -155,6 +202,47 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/occlusion:
+    dependencies:
+      '@ai2live/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ai2live/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/product:
+    dependencies:
+      '@ai2live/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ai2live/history':
+        specifier: workspace:*
+        version: link:../history
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -218,6 +306,53 @@ importers:
       '@ai2live/psd-compiler':
         specifier: workspace:*
         version: link:../psd-compiler
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/repair:
+    dependencies:
+      '@ai2live/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ai2live/history':
+        specifier: workspace:*
+        version: link:../history
+      '@ai2live/qc-engine':
+        specifier: workspace:*
+        version: link:../qc-engine
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/segmentation:
+    dependencies:
+      '@ai2live/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ai2live/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
       sharp:
         specifier: ^0.33.5
         version: 0.33.5

@@ -19,6 +19,12 @@
     "@ai2live/qc-engine": "workspace:*",
     "@ai2live/autolive2d-adapter": "workspace:*",
     "@ai2live/psd2live-adapter": "workspace:*",
+    "@ai2live/segmentation": "workspace:*",
+    "@ai2live/occlusion": "workspace:*",
+    "@ai2live/expression": "workspace:*",
+    "@ai2live/repair": "workspace:*",
+    "@ai2live/product": "workspace:*",
+    "@ai2live/agent-runtime": "workspace:*",
     "commander": "^12.1.0"
   },
   "devDependencies": {

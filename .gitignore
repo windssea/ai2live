@@ -20,3 +20,7 @@ examples/**/builds/
 examples/**/psd/
 examples/**/validation/
 examples/**/previews/recomposed_*.png
+examples/**/masks/
+examples/**/layers/completions/
+examples/**/design/differentials/
+examples/**/validation/
