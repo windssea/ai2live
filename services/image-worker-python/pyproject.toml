@@ -1,9 +1,20 @@
 [project]
 name = "ai2live-image-worker"
 version = "0.1.0"
-description = "Stub image worker for AI Live2D Asset Compiler"
+description = "Image worker for AI Live2D Asset Compiler (segment / inpaint stubs)"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
+fastapi = ["fastapi", "uvicorn"]
 dev = ["pytest"]
+
+[project.scripts]
+ai2live-image-worker = "ai2live_worker.main:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
