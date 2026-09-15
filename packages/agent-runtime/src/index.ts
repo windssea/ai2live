@@ -178,12 +178,14 @@ export const runAgentStep = runPlannerChat;
 export {
   parseRepairPlan,
   runRepairClosedLoop,
+  applyDeterministicRepair,
 } from "./repair-loop.js";
 export type {
   RepairAction,
   RepairPlan,
   RepairClosedLoopOptions,
   RepairClosedLoopResult,
+  RepairApplyResult,
 } from "./repair-loop.js";
 
 export type { ModelProvider, ProviderId, ChatCompletionResult, CostBudget };

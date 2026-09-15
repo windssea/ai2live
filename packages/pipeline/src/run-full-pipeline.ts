@@ -247,13 +247,13 @@ export async function runFullPipeline(
 
     // 3. occlusion
     await runStep("occlusion", async () => {
-      const r = await completeOcclusionScenarios({ projectRoot: root });
-      return { message: `outputs=${Object.keys(r.outputs ?? {}).length}`, data: r.outputs };
+      const r = await completeOcclusionScenarios({ projectRoot: root, dryRun });
+      return { message: `outputs=${r.outputs?.length ?? 0}`, data: r.outputs };
     });
 
     // 4. expressions
     await runStep("expressions", async () => {
-      const r = await generateExpressionDifferentials({ projectRoot: root });
+      const r = await generateExpressionDifferentials({ projectRoot: root, dryRun });
       return {
         message: `differentials=${r.differentials?.length ?? 0}`,
         data: r.differentials,
@@ -316,14 +316,21 @@ export async function runFullPipeline(
     }
     await runStep("repair", async () => {
       const ctx = createAgentContext(root, { providerId: provider });
-      const { plan, planPath } = await runRepairClosedLoop(ctx, {
-        applyStub: dryRun,
+      const { plan, planPath, repairResultPath } = await runRepairClosedLoop(ctx, {
+        applyStub: dryRun && !opts.applyRepair,
+        apply: Boolean(opts.applyRepair),
         validationSummary: undefined,
       });
       artifacts.repairPlan = planPath;
+      if (repairResultPath) artifacts.repairResult = repairResultPath;
       return {
-        message: `repairs=${plan.recommended_repairs.length}`,
-        data: { planPath, repairs: plan.recommended_repairs.length },
+        message: `repairs=${plan.recommended_repairs.length} apply=${Boolean(opts.applyRepair)}`,
+        data: {
+          planPath,
+          repairs: plan.recommended_repairs.length,
+          applied: plan.applied,
+          repairResultPath,
+        },
       };
     });
 

@@ -6,16 +6,26 @@ import {
   formatLayerPsdName,
   defaultGroupForSemantic,
   PSD_GROUP_ORDER,
+  storeAsset,
   type LayerManifest,
   type LayerNode,
 } from "@ai2live/domain";
 import { assertLayerManifest } from "@ai2live/manifest-schema";
 import { loadLayerRgba, layersByZDesc, recomposeNeutral } from "./compose.js";
+import {
+  expectedFromImportLayers,
+  validatePsdRoundtrip,
+  type PsdRoundtripReport,
+} from "./roundtrip.js";
 
 export interface CompileOptions {
   projectRoot: string;
   manifestPath?: string;
   outDir?: string;
+  /** Skip Gate 6 PSD read-back (default false). */
+  skipRoundtrip?: boolean;
+  /** Hash layer PNGs into assets/sha256/... (default true). */
+  storeContentAddressed?: boolean;
 }
 
 export interface ImportManifestLayer {
@@ -27,6 +37,9 @@ export interface ImportManifestLayer {
   z_index: number;
   group: string;
   asset_path?: string;
+  /** Content-addressed sha256 of layer PNG bytes when store is wired. */
+  sha256?: string;
+  content_addressed_path?: string;
 }
 
 export interface CompileResult {
@@ -39,7 +52,13 @@ export interface CompileResult {
     canvas: { width: number; height: number };
     layers: ImportManifestLayer[];
     notes: string;
+    asset_store?: {
+      scheme: "sha256";
+      root: "assets/sha256";
+      layer_count_hashed: number;
+    };
   };
+  roundtrip?: PsdRoundtripReport;
 }
 
 function groupName(layer: LayerNode): string {
@@ -51,6 +70,7 @@ export async function compilePsd(options: CompileOptions): Promise<CompileResult
   const manifestPath =
     options.manifestPath ?? path.join(projectRoot, "spec", "layer_manifest.json");
   const outDir = options.outDir ?? projectRoot;
+  const storeCA = options.storeContentAddressed !== false;
 
   const raw = JSON.parse(await readFile(manifestPath, "utf8"));
   const manifest = assertLayerManifest(raw) as LayerManifest;
@@ -75,6 +95,7 @@ export async function compilePsd(options: CompileOptions): Promise<CompileResult
 
   const importLayers: ImportManifestLayer[] = [];
   const children: object[] = [];
+  let hashed = 0;
 
   // ag-psd: children[0] is top-most
   for (const gName of orderedGroups) {
@@ -93,7 +114,8 @@ export async function compilePsd(options: CompileOptions): Promise<CompileResult
           data: new Uint8ClampedArray(L.rgba),
         },
       });
-      importLayers.push({
+
+      const entry: ImportManifestLayer = {
         id: layer.id,
         uuid: layer.id,
         psd_name: psdName,
@@ -102,7 +124,24 @@ export async function compilePsd(options: CompileOptions): Promise<CompileResult
         z_index: layer.z_index,
         group: gName,
         asset_path: layer.source.asset_path,
-      });
+      };
+
+      if (storeCA && layer.source.asset_path) {
+        const abs = path.isAbsolute(layer.source.asset_path)
+          ? layer.source.asset_path
+          : path.join(projectRoot, layer.source.asset_path);
+        try {
+          const bytes = await readFile(abs);
+          const stored = await storeAsset(projectRoot, bytes, ".png");
+          entry.sha256 = stored.hash;
+          entry.content_addressed_path = stored.relativePath;
+          hashed += 1;
+        } catch {
+          /* missing asset — QC will flag; skip hash */
+        }
+      }
+
+      importLayers.push(entry);
     }
     children.push({
       name: `[${gName}]`,
@@ -138,7 +177,17 @@ export async function compilePsd(options: CompileOptions): Promise<CompileResult
     character_id: manifest.character_id,
     canvas: { width, height },
     layers: importLayers,
-    notes: "LEFT/RIGHT are character-own sides. UUIDs preserved; PSD names use short-id suffix.",
+    notes:
+      "LEFT/RIGHT are character-own sides. UUIDs preserved; PSD names use short-id suffix. sha256 fields reference assets/sha256/ when content-addressed store is wired.",
+    ...(storeCA
+      ? {
+          asset_store: {
+            scheme: "sha256" as const,
+            root: "assets/sha256" as const,
+            layer_count_hashed: hashed,
+          },
+        }
+      : {}),
   };
   const importManifestPath = path.join(psdDir, "import_manifest.json");
   await writeFile(importManifestPath, JSON.stringify(importManifest, null, 2));
@@ -147,5 +196,21 @@ export async function compilePsd(options: CompileOptions): Promise<CompileResult
   const recomposedPath = path.join(previewDir, "recomposed_neutral.png");
   await writeFile(recomposedPath, recomposed.png);
 
-  return { psdPath, importManifestPath, recomposedPath, importManifest };
+  let roundtrip: PsdRoundtripReport | undefined;
+  if (!options.skipRoundtrip) {
+    const boundsByName = new Map<string, { x: number; y: number; w: number; h: number }>();
+    for (const layer of manifest.layers) {
+      if (!layer.canvas_bounds) continue;
+      const psdName = formatLayerPsdName(layer, shortId(layer.id));
+      boundsByName.set(psdName, layer.canvas_bounds);
+    }
+    roundtrip = await validatePsdRoundtrip({
+      projectRoot,
+      psdPath,
+      expectedLayers: expectedFromImportLayers(importLayers, boundsByName),
+      canvas: { width, height },
+    });
+  }
+
+  return { psdPath, importManifestPath, recomposedPath, importManifest, roundtrip };
 }

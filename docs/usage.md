@@ -115,3 +115,11 @@ ai2live providers
 ai2live agent plan|diagnose|repair <project>
 ai2live image edit --prompt … --input …
 ```
+
+## Design-gap progress (Batch 1)
+
+- Gate 6 PSD round-trip → `validation/psd_roundtrip.json`
+- Occlusion: completion mask + imageEdit / neighbor-blend fallback (`completion_method`)
+- Expressions: Edit Delta via imageEdit; dry-run ROI morph stub + provenance
+- `ai2live agent repair --apply` / `run --apply-repair` → `validation/repair_result.json`
+- Content-addressed layer hashes under `assets/sha256/` on compile

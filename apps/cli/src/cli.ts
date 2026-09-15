@@ -219,6 +219,7 @@ function attachRunFlags(cmd: Command) {
     .option("--skip-expressions", "Skip expression differentials")
     .option("--skip-downstream", "Skip AutoLive2d / psd2live packages")
     .option("--always-repair", "Run agent repair even when QC passed")
+    .option("--apply-repair", "After repair plan, apply deterministic repair + re-QC")
     .option("--json-events", "Emit NDJSON PipelineEvents to stdout (for Studio)")
     .option("--feather <px>", "Segment feather radius", (v) => Number(v), 2)
     .option("--no-split-bilateral", "Disable bilateral eye/arm split");
@@ -237,6 +238,7 @@ async function executeRun(
     skipExpressions?: boolean;
     skipDownstream?: boolean;
     alwaysRepair?: boolean;
+    applyRepair?: boolean;
     jsonEvents?: boolean;
     feather?: number;
     splitBilateral?: boolean;
@@ -259,6 +261,7 @@ async function executeRun(
     characterName: opts.name,
     skip,
     alwaysRepair: Boolean(opts.alwaysRepair),
+    applyRepair: Boolean(opts.applyRepair),
     feather: opts.feather,
     splitBilateral: opts.splitBilateral,
     onEvent: (e) => {
@@ -489,11 +492,12 @@ agent
   .option("--provider <id>", "grok | openai | codex")
   .option("--prompt <text>", "Extra notes for the diagnoser")
   .option("--apply-stub", "Record stub apply markers (no PNG mutation)")
+  .option("--apply", "Apply ≥1 deterministic repair (occlusion/feather/recompile) then re-QC")
   .option("--skip-pose", "Skip pose grid render/diagnose before LLM plan")
   .action(
     async (
       projectDir: string,
-      opts: { provider?: string; prompt?: string; applyStub?: boolean; skipPose?: boolean }
+      opts: { provider?: string; prompt?: string; applyStub?: boolean; apply?: boolean; skipPose?: boolean }
     ) => {
       const root = path.resolve(projectDir);
       const providerId = resolveProviderId(opts.provider) as ProviderId;
@@ -511,15 +515,23 @@ agent
 
       console.log(`Repair plan with provider=${ctx.provider.id} project=${root}`);
       try {
-        const { plan, planPath, historyHead } = await runRepairClosedLoop(ctx, {
+        const { plan, planPath, historyHead, repairResultPath, qcAfter } = await runRepairClosedLoop(ctx, {
           userPrompt: opts.prompt,
           applyStub: opts.applyStub,
+          apply: opts.apply,
           poseDiagnosis,
         });
         console.log(`Wrote ${planPath}`);
         console.log(`repairs=${plan.recommended_repairs.length} history_head=${historyHead}`);
         if (opts.applyStub) {
           console.log(`stub applied markers=${plan.applied?.length ?? 0}`);
+        }
+        if (opts.apply) {
+          console.log(`applied=${plan.applied?.map((a) => a.status).join(",") ?? "none"}`);
+          if (repairResultPath) console.log(`repair_result=${repairResultPath}`);
+          if (qcAfter && typeof qcAfter === "object" && qcAfter && "passed" in qcAfter) {
+            console.log(`qc_after_passed=${(qcAfter as { passed: boolean }).passed}`);
+          }
         }
       } catch (err) {
         console.error((err as Error).message);

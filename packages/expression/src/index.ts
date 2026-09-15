@@ -1,1 +1,6 @@
-export { generateExpressionDifferentials, type ExpressionKind } from "./differentials.js";
+export {
+  generateExpressionDifferentials,
+  type ExpressionKind,
+  type ExpressionMethod,
+  type ExpressionDifferentialResult,
+} from "./differentials.js";

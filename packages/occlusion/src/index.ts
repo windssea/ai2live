@@ -1,1 +1,9 @@
-export { completeOcclusionScenarios, type OcclusionScenario } from "./complete.js";
+export {
+  completeOcclusionScenarios,
+  buildCompletionMask,
+  neighborBlendComplete,
+  type OcclusionScenario,
+  type CompletionMethod,
+  type CompletionMaskResult,
+  type OcclusionScenarioResult,
+} from "./complete.js";

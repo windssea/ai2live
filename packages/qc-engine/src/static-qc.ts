@@ -167,6 +167,40 @@ export async function runStaticQc(options: StaticQcOptions): Promise<ValidationR
     }
   }
 
+  // Gate 6: fold PSD round-trip report if present (written by compilePsd)
+  const roundtripPath = path.join(projectRoot, "validation", "psd_roundtrip.json");
+  if (await fileExists(roundtripPath)) {
+    try {
+      const rt = JSON.parse(await readFile(roundtripPath, "utf8")) as {
+        passed?: boolean;
+        findings?: ValidationFinding[];
+        read_leaf_count?: number;
+        expected_leaf_count?: number;
+      };
+      metrics.psd_roundtrip_passed = rt.passed ? 1 : 0;
+      if (typeof rt.read_leaf_count === "number") metrics.psd_roundtrip_leaf_count = rt.read_leaf_count;
+      if (typeof rt.expected_leaf_count === "number") {
+        metrics.psd_roundtrip_expected_count = rt.expected_leaf_count;
+      }
+      if (Array.isArray(rt.findings)) {
+        for (const f of rt.findings) {
+          // Avoid duplicating INFO noise if already present by id
+          if (!findings.some((x) => x.id === f.id)) findings.push(f);
+        }
+      } else if (rt.passed === false) {
+        findings.push({
+          id: createStableId("finding", "psd-rt-qc"),
+          severity: "ERROR",
+          type: "PSD_ROUNDTRIP_STRUCTURAL_LOSS",
+          message: "PSD round-trip failed (see validation/psd_roundtrip.json)",
+          recommended_action: "Recompile and inspect layer groups",
+        });
+      }
+    } catch {
+      /* ignore malformed roundtrip report */
+    }
+  }
+
   const passed = !findings.some((f) => f.severity === "ERROR");
   const report: ValidationReport = {
     id: createStableId("vr", `${manifest.id}-static`),

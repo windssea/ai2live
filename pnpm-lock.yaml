@@ -155,13 +155,28 @@ importers:
       '@ai2live/model-providers':
         specifier: workspace:*
         version: link:../model-providers
+      '@ai2live/occlusion':
+        specifier: workspace:*
+        version: link:../occlusion
       '@ai2live/product':
         specifier: workspace:*
         version: link:../product
+      '@ai2live/psd-compiler':
+        specifier: workspace:*
+        version: link:../psd-compiler
+      '@ai2live/qc-engine':
+        specifier: workspace:*
+        version: link:../qc-engine
+      '@ai2live/segmentation':
+        specifier: workspace:*
+        version: link:../segmentation
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.2
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -205,6 +220,9 @@ importers:
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../manifest-schema
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../model-providers
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -293,6 +311,9 @@ importers:
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../manifest-schema
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../model-providers
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
