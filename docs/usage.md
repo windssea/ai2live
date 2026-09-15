@@ -114,6 +114,8 @@ ai2live doctor [--json]
 ai2live providers
 ai2live agent plan|diagnose|repair <project>
 ai2live image edit --prompt … --input …
+ai2live layer replace <project> <layerId> --png <path>
+ai2live eval [--suite all|hair-stress|occlusion-stress|flat-image]
 ```
 
 ## Design-gap progress (Batch 1)
@@ -138,4 +140,19 @@ ai2live image edit --prompt … --input …
 - Gates 0 / 1 / 5 real heuristics in `validation/quality_gates.json`
 - Downstream invoke smoke via `AI2LIVE_AUTOLIVE2D_CMD` / `AI2LIVE_PSD2LIVE_CMD` (else `invoke_skipped.json`)
 - Pose QA: parameter-contract annotated composites + `pose_qa_findings.json`
+
+## Design-gap progress (Batch 4)
+
+- Evals: occlusion-stress + flat-image + `evals/run-all.mjs` / `ai2live eval` → `evals/last-report.json`
+- Prompt layering: `@ai2live/prompt-layers` (Identity / Style / Rigability / EditDelta / Negatives)
+- Human replace-and-continue: `ai2live layer replace <project> <layerId> --png <path>`
+- Downstream: `invoke_log.json` + safe check when `AI2LIVE_*_CMD` set
+- `pipeline_report.json`: provider, completion_method_histogram, asset_sha256_count, package_version
+
+### CLI additions
+
+```text
+ai2live eval [--suite all|hair-stress|occlusion-stress|flat-image]
+ai2live layer replace <project> <layerId> --png <path>
+```
 

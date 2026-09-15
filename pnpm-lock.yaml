@@ -44,6 +44,9 @@ importers:
       '@ai2live/image-client':
         specifier: workspace:*
         version: link:../../packages/image-client
+      '@ai2live/layer-ops':
+        specifier: workspace:*
+        version: link:../../packages/layer-ops
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../../packages/manifest-schema
@@ -59,6 +62,9 @@ importers:
       '@ai2live/product':
         specifier: workspace:*
         version: link:../../packages/product
+      '@ai2live/prompt-layers':
+        specifier: workspace:*
+        version: link:../../packages/prompt-layers
       '@ai2live/psd-compiler':
         specifier: workspace:*
         version: link:../../packages/psd-compiler
@@ -241,6 +247,9 @@ importers:
       '@ai2live/model-providers':
         specifier: workspace:*
         version: link:../model-providers
+      '@ai2live/prompt-layers':
+        specifier: workspace:*
+        version: link:../prompt-layers
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -279,6 +288,28 @@ importers:
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/layer-ops:
+    dependencies:
+      '@ai2live/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@ai2live/history':
+        specifier: workspace:*
+        version: link:../history
+      '@ai2live/manifest-schema':
+        specifier: workspace:*
+        version: link:../manifest-schema
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -338,6 +369,9 @@ importers:
       '@ai2live/model-providers':
         specifier: workspace:*
         version: link:../model-providers
+      '@ai2live/prompt-layers':
+        specifier: workspace:*
+        version: link:../prompt-layers
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -415,6 +449,18 @@ importers:
       '@ai2live/history':
         specifier: workspace:*
         version: link:../history
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/prompt-layers:
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

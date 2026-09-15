@@ -1,5 +1,6 @@
-import { mkdir, writeFile, readFile, copyFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, copyFile, readdir, access } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { seeThroughFromMaster } from "@ai2live/segmentation";
 import { completeOcclusionScenarios } from "@ai2live/occlusion";
 import { generateExpressionDifferentials } from "@ai2live/expression";
@@ -87,6 +88,92 @@ async function exportPsdArtifacts(
   await copyFile(compiled.psdPath, psdExport);
   await copyFile(compiled.importManifestPath, importManifestExport);
   return { psdExport, importManifestExport };
+}
+
+
+
+async function countSha256Assets(root: string): Promise<number> {
+  const base = path.join(root, "assets", "sha256");
+  let count = 0;
+  async function walk(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.isFile() && /\.(png|json|bin)$/i.test(e.name)) count += 1;
+    }
+  }
+  await walk(base);
+  return count;
+}
+
+function completionMethodHistogram(steps: StepRecord[]): Record<string, number> {
+  const hist: Record<string, number> = {};
+  const bump = (m: string) => {
+    hist[m] = (hist[m] ?? 0) + 1;
+  };
+  for (const s of steps) {
+    const data = s.data as unknown;
+    if (!data) continue;
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (item && typeof item === "object") {
+          const m =
+            (item as { completion_method?: string }).completion_method ??
+            (item as { method?: string }).method;
+          if (m) bump(String(m));
+        }
+      }
+    } else if (typeof data === "object") {
+      const arr =
+        (data as { outputs?: unknown[] }).outputs ??
+        (data as { differentials?: unknown[] }).differentials;
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (item && typeof item === "object") {
+            const m =
+              (item as { completion_method?: string }).completion_method ??
+              (item as { method?: string }).method;
+            if (m) bump(String(m));
+          }
+        }
+      }
+    }
+  }
+  return hist;
+}
+
+async function readPackageVersion(root: string): Promise<string> {
+  // Walk up from pipeline package to monorepo root package.json
+  const candidates = [
+    path.resolve(root, "package.json"),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../package.json"),
+  ];
+  for (const c of candidates) {
+    try {
+      const raw = JSON.parse(await readFile(c, "utf8")) as { version?: string; name?: string };
+      if (raw.version && (raw.name === "ai2live" || c.includes("package.json"))) {
+        if (raw.name === "ai2live") return raw.version;
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  try {
+    const repoPkg = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../package.json"
+    );
+    const raw = JSON.parse(await readFile(repoPkg, "utf8")) as { version?: string };
+    return raw.version ?? "0.1.0";
+  } catch {
+    return "0.1.0";
+  }
 }
 
 
@@ -398,8 +485,41 @@ export async function runFullPipeline(
       artifacts.handoff = handoffPath;
     }
 
+    const pkgVersion = await readPackageVersion(root);
+    const asset_sha256_count = await countSha256Assets(root);
+    let completion_method_histogram = completionMethodHistogram(steps);
+    if (Object.keys(completion_method_histogram).length === 0) {
+      for (const rel of [
+        "layers/completions/occlusion_report.json",
+        "design/differentials/expression_report.json",
+      ]) {
+        try {
+          const raw = JSON.parse(await readFile(path.join(root, rel), "utf8")) as {
+            scenarios?: { completion_method?: string }[];
+            differentials?: { method?: string; completion_method?: string }[];
+          };
+          for (const s of raw.scenarios ?? []) {
+            if (s.completion_method) {
+              completion_method_histogram[s.completion_method] =
+                (completion_method_histogram[s.completion_method] ?? 0) + 1;
+            }
+          }
+          for (const d of raw.differentials ?? []) {
+            const m = d.completion_method ?? d.method;
+            if (m) {
+              completion_method_histogram[m] =
+                (completion_method_histogram[m] ?? 0) + 1;
+            }
+          }
+        } catch {
+          /* optional */
+        }
+      }
+    }
+
     const payload = {
-      version: "0.1",
+      version: "0.2",
+      package_version: pkgVersion,
       project_path: root,
       timestamp: new Date().toISOString(),
       passed,
@@ -407,6 +527,8 @@ export async function runFullPipeline(
       provider,
       from_image: opts.fromImage ?? null,
       qc_passed: qcPassed ?? null,
+      completion_method_histogram,
+      asset_sha256_count,
       steps,
       artifacts,
       handoff: handoffPath ?? null,

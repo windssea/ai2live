@@ -20,7 +20,8 @@
     "@ai2live/manifest-schema": "workspace:*",
     "@ai2live/model-providers": "workspace:*",
     "sharp": "^0.33.5",
-    "@ai2live/image-client": "workspace:*"
+    "@ai2live/image-client": "workspace:*",
+    "@ai2live/prompt-layers": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
