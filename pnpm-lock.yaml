@@ -44,6 +44,9 @@ importers:
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../../packages/manifest-schema
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../../packages/model-providers
       '@ai2live/occlusion':
         specifier: workspace:*
         version: link:../../packages/occlusion
@@ -99,6 +102,9 @@ importers:
       '@ai2live/history':
         specifier: workspace:*
         version: link:../history
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../model-providers
       '@ai2live/product':
         specifier: workspace:*
         version: link:../product
@@ -202,6 +208,18 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/model-providers:
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
