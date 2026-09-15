@@ -66,10 +66,24 @@ export async function writePsd2LiveDeepSession(opts: {
 export async function checkExternalPsd2Live(): Promise<{
   available: boolean;
   hint: string;
+  cmd?: string;
+  mcp_url?: string;
 }> {
-  // We never shell out to unknown binaries with secrets; just document discovery.
+  const cmd =
+    process.env.AI2LIVE_PSD2LIVE_CMD?.trim() ||
+    process.env.AI2LIVE_PSD2LIVE_BIN?.trim() ||
+    undefined;
+  const mcp_url = process.env.AI2LIVE_PSD2LIVE_MCP_URL?.trim() || undefined;
+  if (cmd || mcp_url) {
+    return {
+      available: true,
+      hint: "External psd2live configured — use invokePsd2LiveSmoke (GPL stays external).",
+      cmd,
+      mcp_url,
+    };
+  }
   return {
     available: false,
-    hint: "Install psd2live separately and point AI2LIVE_PSD2LIVE_BIN at it.",
+    hint: "Install psd2live separately; set AI2LIVE_PSD2LIVE_CMD or AI2LIVE_PSD2LIVE_MCP_URL.",
   };
 }

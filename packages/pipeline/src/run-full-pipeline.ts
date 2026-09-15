@@ -6,8 +6,8 @@ import { generateExpressionDifferentials } from "@ai2live/expression";
 import { compilePsd } from "@ai2live/psd-compiler";
 import { runStaticQc } from "@ai2live/qc-engine";
 import { renderPoseGridStub, diagnosePoseGrid } from "@ai2live/repair";
-import { buildAutoLive2dPackage } from "@ai2live/autolive2d-adapter";
-import { writePsd2LiveDeepSession } from "@ai2live/psd2live-adapter";
+import { buildAutoLive2dPackage, invokeAutoLive2dSmoke } from "@ai2live/autolive2d-adapter";
+import { writePsd2LiveDeepSession, invokePsd2LiveSmoke } from "@ai2live/psd2live-adapter";
 import { writeHandoff } from "@ai2live/product";
 import {
   createAgentContext,
@@ -346,11 +346,21 @@ export async function runFullPipeline(
         psdPath: compiled?.psdPath,
         importManifestPath: compiled?.importManifestPath,
       });
+      const alInvoke = await invokeAutoLive2dSmoke({ projectRoot: root, packageDir: al.out_dir });
+      const p2lInvoke = await invokePsd2LiveSmoke({
+        projectRoot: root,
+        packageDir: deep.packageResult.out_dir,
+      });
       artifacts.autolive2d = al.out_dir;
       artifacts.psd2liveDeep = deep.sessionPath;
       return {
-        message: `autolive2d=${al.out_dir}`,
-        data: { autolive2d: al.out_dir, psd2liveDeep: deep.sessionPath },
+        message: `autolive2d=${al.out_dir}; invoke skipped=${alInvoke.skipped && p2lInvoke.skipped}`,
+        data: {
+          autolive2d: al.out_dir,
+          psd2liveDeep: deep.sessionPath,
+          autolive2d_invoke: alInvoke,
+          psd2live_invoke: p2lInvoke,
+        },
       };
     });
   } catch (err) {
