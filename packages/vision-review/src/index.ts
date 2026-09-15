@@ -22,3 +22,12 @@ export {
   type VlmReviewIssue,
   type VlmReviewScores,
 } from "./schema.js";
+
+export {
+  localizeFailures,
+  writeFailureLocalization,
+  PROBLEM_TYPES,
+  type ProblemType,
+  type LocalizedFailure,
+  type FailureLocalizationReport,
+} from "./failure-localization.js";

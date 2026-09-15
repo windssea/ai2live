@@ -550,7 +550,7 @@ export async function runFullPipeline(
       artifacts.autolive2d = al.out_dir;
       artifacts.psd2liveDeep = deep.sessionPath;
       return {
-        message: `autolive2d=${al.out_dir}; invoke skipped=${alInvoke.skipped && p2lInvoke.skipped}`,
+        message: `autolive2d=${al.out_dir}; invoke al=${alInvoke.skipped ? "skipped" : "ok"} p2l=${p2lInvoke.skipped ? "skipped" : "ok"}`,
         data: {
           autolive2d: al.out_dir,
           psd2liveDeep: deep.sessionPath,

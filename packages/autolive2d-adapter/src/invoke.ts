@@ -42,13 +42,21 @@ function useMockRig(): boolean {
 }
 
 /** Resolve in-repo mock AutoLive2d runner (scripts/mock-rig/autolive2d-mock.mjs). */
-function resolveMockCmd(): string | undefined {
+async function resolveMockCmd(): Promise<string | undefined> {
   if (!useMockRig()) return undefined;
-  // Walk up from this package to monorepo root
   const candidates = [
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/mock-rig/autolive2d-mock.mjs"),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../scripts/mock-rig/autolive2d-mock.mjs"),
     path.resolve(process.cwd(), "scripts/mock-rig/autolive2d-mock.mjs"),
   ];
+  for (const c of candidates) {
+    try {
+      await access(c);
+      return c;
+    } catch {
+      /* try next */
+    }
+  }
   return candidates[0];
 }
 
@@ -125,7 +133,7 @@ export async function safeCheckAutoLive2d(cmd: string, cwd: string): Promise<Saf
 }
 
 /**
- * After buildAutoLive2dPackage: attempt import smoke if binary configured; else write invoke_skipped.json.
+ * After buildAutoLive2dPackage: real CMD if set; else mock runner (first-class DoD backend) when USE_MOCK_RIG; else skipped.
  */
 export async function invokeAutoLive2dSmoke(opts: {
   projectRoot: string;
@@ -138,7 +146,7 @@ export async function invokeAutoLive2dSmoke(opts: {
   const cmd = resolveCmd();
 
   if (!cmd) {
-    const mockCmd = resolveMockCmd();
+    const mockCmd = await resolveMockCmd();
     if (mockCmd && useMockRig()) {
       const node = process.execPath;
       const safe = await safeCheckAutoLive2d(`${node} ${mockCmd}`, outDir);

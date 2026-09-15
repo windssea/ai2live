@@ -48,7 +48,7 @@ program.name("ai2live").description("AI Live2D Asset Compiler CLI").version("0.1
 
 program
   .command("init")
-  .description("Phase B stub: text → character_spec → synthetic SVG master + layer template")
+  .description("Text → character_spec → rig-friendly synthetic master (Gate 0) + layer template")
   .argument("<projectDir>", "Project directory to create/use")
   .requiredOption("--text <text>", "Character description text")
   .option("--name <name>", "Character display name")

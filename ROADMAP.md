@@ -87,3 +87,10 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 - **Stop conditions:** max repair attempts + metric-flat stop in pipeline
 - **`ai2live run` defaults:** vision-review dry-run dual-judge + mock rig on
 
+
+
+### Batch 9
+- **Rig-friendly master (#2):** synthetic SVG Gate 0 hard-enough (L/R, color regions, layout guides); optional live imageEdit refine
+- **Mock backends first-class (#9/#16):** always `invoke_result.json` for AutoLive2d + psd2live when real CMD unset
+- **Failure localization (#11):** `validation/failure_localization.json` with `layer_id` + §7.13 `problem_type`
+- **DoD:** remaining rows EXTERNAL only (Cubism / real binaries / optional OpenCV+keys)
