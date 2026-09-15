@@ -20,5 +20,6 @@ export {
   initProjectFromText,
   textToCharacterSpec,
   syntheticMasterSvg,
+  refineMasterViaImageEdit,
 } from "./init-from-text.js";
 export type { InitFromTextOptions, InitFromTextResult } from "./init-from-text.js";

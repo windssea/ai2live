@@ -119,12 +119,21 @@ export async function runGate0MasterBindability(
 
   // Aspect: upper-body anime typically portrait-ish (h >= w * 0.85) or square
   const aspect = width / Math.max(1, height);
-  if (aspect > 1.6) {
+  if (aspect > 2.0) {
     findings.push({
       id: createStableId("finding", "g0-aspect"),
-      severity: "WARNING",
+      severity: "ERROR",
       type: "GATE0_UNUSUAL_ASPECT",
-      message: `Canvas aspect ${aspect.toFixed(2)} is wide for upper-body anime template (heuristic)`,
+      message: `Canvas aspect ${aspect.toFixed(2)} is extremely wide — not rig-friendly for upper-body`,
+      recommended_action: "Use portrait or near-square canvas for anime upper-body masters",
+    });
+  } else if (aspect > 1.6) {
+    findings.push({
+      id: createStableId("finding", "g0-aspect"),
+      severity: "ERROR",
+      type: "GATE0_UNUSUAL_ASPECT",
+      message: `Canvas aspect ${aspect.toFixed(2)} is wide for upper-body anime template (hard check)`,
+      recommended_action: "Prefer portrait canvas (height >= width)",
     });
   }
 
@@ -133,11 +142,16 @@ export async function runGate0MasterBindability(
   let edgeTouch = 0;
   let topHalf = 0;
   let bottomHalf = 0;
+  let leftMass = 0;
+  let rightMass = 0;
   let cxSum = 0;
   let cySum = 0;
+  // Region hue buckets for face/hair/body separation (coarse H from RGB)
+  const hueHist = new Map<number, number>();
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const a = raw[(y * width + x) * 4 + 3]!;
+      const i = (y * width + x) * 4;
+      const a = raw[i + 3]!;
       if (a > 16) {
         opaque += 1;
         cxSum += x;
@@ -145,6 +159,22 @@ export async function runGate0MasterBindability(
         if (x === 0 || y === 0 || x === width - 1 || y === height - 1) edgeTouch += 1;
         if (y < height / 2) topHalf += 1;
         else bottomHalf += 1;
+        if (x < width / 2) leftMass += 1;
+        else rightMass += 1;
+        const r = raw[i]! / 255;
+        const g = raw[i + 1]! / 255;
+        const b = raw[i + 2]! / 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const d = max - min;
+        let h = 0;
+        if (d > 0.02) {
+          if (max === r) h = ((g - b) / d) % 6;
+          else if (max === g) h = (b - r) / d + 2;
+          else h = (r - g) / d + 4;
+          h = Math.round(((h * 60) + 360) % 360 / 30); // 12 buckets
+          hueHist.set(h, (hueHist.get(h) ?? 0) + 1);
+        }
       }
     }
   }
@@ -153,13 +183,17 @@ export async function runGate0MasterBindability(
   const topBias = opaque ? topHalf / opaque : 0;
   const centroidX = opaque ? cxSum / opaque / width : 0.5;
   const centroidY = opaque ? cySum / opaque / height : 0.5;
+  const lrBalance = opaque ? Math.min(leftMass, rightMass) / Math.max(1, Math.max(leftMass, rightMass)) : 1;
+  const hueBucketsUsed = [...hueHist.values()].filter((c) => c > opaque * 0.02).length;
   metrics.master_coverage = coverage;
   metrics.master_edge_touch_ratio = edgeRatio;
   metrics.master_top_half_bias = topBias;
   metrics.master_centroid_x = centroidX;
   metrics.master_centroid_y = centroidY;
+  metrics.master_lr_balance = lrBalance;
+  metrics.master_hue_buckets = hueBucketsUsed;
 
-  // Alpha coverage
+  // Alpha coverage — soft→hard thresholds
   if (coverage < 0.05) {
     findings.push({
       id: createStableId("finding", "g0-empty"),
@@ -167,6 +201,14 @@ export async function runGate0MasterBindability(
       type: "GATE0_MASTER_EMPTY",
       message: `Master coverage ${coverage.toFixed(3)} too low for rigging`,
       recommended_action: "Regenerate / replace master_neutral.png",
+    });
+  } else if (coverage < 0.08) {
+    findings.push({
+      id: createStableId("finding", "g0-sparse"),
+      severity: "ERROR",
+      type: "GATE0_LOW_COVERAGE",
+      message: `Master coverage ${coverage.toFixed(3)} is too sparse for upper-body work (hard check)`,
+      recommended_action: "Regenerate a fuller upper-body master",
     });
   } else if (coverage < 0.12) {
     findings.push({
@@ -177,12 +219,21 @@ export async function runGate0MasterBindability(
     });
   }
 
-  if (edgeRatio > 0.35) {
+  if (edgeRatio > 0.45) {
     findings.push({
       id: createStableId("finding", "g0-crop"),
-      severity: "WARNING",
+      severity: "ERROR",
       type: "GATE0_POSSIBLE_CROP",
-      message: `High edge-touch ratio ${edgeRatio.toFixed(3)} — subject may be cropped`,
+      message: `Edge-touch ratio ${edgeRatio.toFixed(3)} > 0.45 — subject likely cropped (hard check)`,
+      recommended_action: "Leave margin around the character; avoid edge flush",
+    });
+  } else if (edgeRatio > 0.35) {
+    findings.push({
+      id: createStableId("finding", "g0-crop"),
+      severity: "ERROR",
+      type: "GATE0_POSSIBLE_CROP",
+      message: `High edge-touch ratio ${edgeRatio.toFixed(3)} — subject may be cropped (hard-enough)`,
+      recommended_action: "Prefer a master with clear margins for bindability",
     });
   }
 
@@ -196,10 +247,46 @@ export async function runGate0MasterBindability(
   if (!frontish && coverage >= 0.05) {
     findings.push({
       id: createStableId("finding", "g0-frontish"),
-      severity: "WARNING",
+      severity: "ERROR",
       type: "GATE0_NOT_FRONTISH",
-      message: `Front-ish silhouette heuristic failed (cx=${centroidX.toFixed(2)} cy=${centroidY.toFixed(2)} topBias=${topBias.toFixed(2)})`,
+      message: `Front-ish silhouette heuristic failed (cx=${centroidX.toFixed(2)} cy=${centroidY.toFixed(2)} topBias=${topBias.toFixed(2)}) — hard check`,
       recommended_action: "Prefer a front-facing upper-body master for auto layer plan",
+    });
+  }
+
+  // L/R mass balance — key for bilateral limb judgment (DESIGN Gate 0)
+  if (lrBalance < 0.45 && coverage >= 0.05) {
+    findings.push({
+      id: createStableId("finding", "g0-lr"),
+      severity: "ERROR",
+      type: "GATE0_LR_IMBALANCE",
+      message: `L/R mass balance ${lrBalance.toFixed(3)} < 0.45 — left/right limbs hard to judge`,
+      recommended_action: "Use a more symmetric front pose with clear L/R arms",
+    });
+  } else if (lrBalance < 0.6 && coverage >= 0.05) {
+    findings.push({
+      id: createStableId("finding", "g0-lr"),
+      severity: "WARNING",
+      type: "GATE0_LR_IMBALANCE",
+      message: `L/R mass balance ${lrBalance.toFixed(3)} is marginal`,
+    });
+  }
+
+  // Separate face/hair/body color regions: expect ≥3 significant hue buckets
+  if (hueBucketsUsed < 2 && coverage >= 0.08) {
+    findings.push({
+      id: createStableId("finding", "g0-hue"),
+      severity: "ERROR",
+      type: "GATE0_COLOR_REGIONS",
+      message: `Only ${hueBucketsUsed} significant hue bucket(s) — face/hair/body regions not separable`,
+      recommended_action: "Use distinct face, hair, and body colors for rig-friendly masters",
+    });
+  } else if (hueBucketsUsed < 3 && coverage >= 0.08) {
+    findings.push({
+      id: createStableId("finding", "g0-hue"),
+      severity: "WARNING",
+      type: "GATE0_COLOR_REGIONS",
+      message: `Hue buckets=${hueBucketsUsed} — prefer clearer face/hair/body color separation`,
     });
   }
 
@@ -208,7 +295,7 @@ export async function runGate0MasterBindability(
       id: createStableId("finding", "g0-ok"),
       severity: "INFO",
       type: "GATE0_OK",
-      message: `Gate 0 OK coverage=${coverage.toFixed(3)} frontish=${frontish}`,
+      message: `Gate 0 OK coverage=${coverage.toFixed(3)} frontish=${frontish} lr=${lrBalance.toFixed(2)} hues=${hueBucketsUsed}`,
     });
   }
 
@@ -218,7 +305,7 @@ export async function runGate0MasterBindability(
     depth: "heuristic",
     metrics,
     findings,
-    note: "Aspect / alpha coverage / min-size / front-ish centroid heuristics — not full VLM pose audit",
+    note: "Hard-enough checks: aspect / coverage / crop / front-ish / L-R balance / color-region separation",
   };
 }
 

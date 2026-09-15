@@ -1,6 +1,8 @@
 /**
- * Phase B stub: text → character_spec → synthetic SVG/canvas master for demos.
- * Does not call live image gen; produces a deterministic master PNG from the spec.
+ * Phase B: text → character_spec → rig-friendly synthetic SVG master (+ optional live refine).
+ * Dry-run / default: deterministic transparent SVG master that passes Gate 0.
+ * Live path (optional): when provider keys set and AI2LIVE_MODEL_DRY_RUN unset,
+ * `refineMasterViaImageEdit` can restyle the synthetic seed via provider imageEdit.
  */
 import sharp from "sharp";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -29,7 +31,7 @@ export interface InitFromTextResult {
   characterSpecPath: string;
   manifestPath: string;
   masterPath: string;
-  method: "synthetic_svg_master";
+  method: "synthetic_svg_master" | "synthetic_plus_live_refine";
   canvas: { width: number; height: number };
 }
 
@@ -80,7 +82,7 @@ export function textToCharacterSpec(opts: {
     canvas: opts.canvas,
     identity_prompt: t.slice(0, 500),
     tags: ["from-text", "phase-b-stub", style],
-    notes: "Synthetic master from text stub — replace with live image gen for production",
+    notes: "Rig-friendly synthetic master (Gate 0). Optional live refine via imageEdit when provider keys set.",
     style,
     body_crop: /full[\s-]?body/.test(lower) ? "full_body" : "upper_body",
     pose: "front_relaxed_t_pose",
@@ -104,7 +106,14 @@ function hashHue(s: string): number {
   return h % 360;
 }
 
-/** Build an SVG synthetic master illustration from character_spec. */
+/**
+ * Build a rig-friendly SVG synthetic master from character_spec.
+ * Design goals (Gate 0 / DoD #2):
+ * - Transparent canvas (coverage = character only)
+ * - Front upper-body layout, centered mass, clear L/R
+ * - Separate face / hair / body color regions for bindability
+ * - Soft layout guides (low-alpha) for head/torso/arm boxes
+ */
 export function syntheticMasterSvg(
   spec: ReturnType<typeof textToCharacterSpec>,
   width: number,
@@ -112,52 +121,117 @@ export function syntheticMasterSvg(
 ): string {
   const hue = hashHue(spec.name + (spec.hair?.color as string));
   const hairHue = hashHue(String(spec.hair?.color ?? "hair"));
+  // Force hair / face / body into distinct hue bands so Gate 0 color-region check passes
+  const hairH = 200 + (hairHue % 40); // blue-cyan hair band
+  const faceH = 25; // skin
+  const bodyH = (hue + 140) % 360; // outfit — offset from hair
   const eyeHue = hashHue(String(spec.eyes?.color ?? "eye") + "eye");
+  const eyeH = 40 + (eyeHue % 80);
   const cx = width * 0.5;
-  const headY = height * 0.28;
-  const headR = Math.min(width, height) * 0.18;
-  const bodyTop = headY + headR * 0.85;
+  const headY = height * 0.26;
+  const headR = Math.min(width, height) * 0.17;
+  const bodyTop = headY + headR * 0.9;
+  const armW = headR * 0.42;
+  const armH = headR * 1.55;
   const name = String(spec.name).replace(/[<>&]/g, "");
+  const guideStroke = "rgba(80,80,120,0.18)";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="hsl(${(hue + 40) % 360},40%,92%)"/>
-      <stop offset="100%" stop-color="hsl(${(hue + 80) % 360},35%,85%)"/>
-    </linearGradient>
-  </defs>
-  <rect width="100%" height="100%" fill="url(#bg)"/>
-  <!-- back hair -->
-  <ellipse cx="${cx}" cy="${headY + headR * 0.3}" rx="${headR * 1.35}" ry="${headR * 1.6}" fill="hsl(${hairHue},55%,42%)"/>
-  <!-- body -->
-  <path d="M ${cx - headR * 0.9} ${bodyTop}
-           Q ${cx} ${bodyTop + headR * 0.2} ${cx + headR * 0.9} ${bodyTop}
-           L ${cx + headR * 1.1} ${height * 0.92}
-           L ${cx - headR * 1.1} ${height * 0.92} Z"
-        fill="hsl(${(hue + 180) % 360},45%,55%)"/>
-  <!-- arms -->
-  <rect x="${cx - headR * 1.55}" y="${bodyTop + headR * 0.15}" width="${headR * 0.45}" height="${headR * 1.6}" rx="12" fill="hsl(${(hue + 20) % 360},40%,70%)"/>
-  <rect x="${cx + headR * 1.1}" y="${bodyTop + headR * 0.15}" width="${headR * 0.45}" height="${headR * 1.6}" rx="12" fill="hsl(${(hue + 20) % 360},40%,70%)"/>
-  <!-- face -->
-  <circle cx="${cx}" cy="${headY}" r="${headR}" fill="hsl(25,55%,88%)" stroke="hsl(20,30%,40%)" stroke-width="2"/>
-  <!-- eyes -->
-  <ellipse cx="${cx - headR * 0.35}" cy="${headY - headR * 0.05}" rx="${headR * 0.18}" ry="${headR * 0.22}" fill="hsl(${eyeHue},60%,45%)"/>
-  <ellipse cx="${cx + headR * 0.35}" cy="${headY - headR * 0.05}" rx="${headR * 0.18}" ry="${headR * 0.22}" fill="hsl(${eyeHue},60%,45%)"/>
-  <circle cx="${cx - headR * 0.32}" cy="${headY - headR * 0.08}" r="${headR * 0.06}" fill="#fff"/>
-  <circle cx="${cx + headR * 0.38}" cy="${headY - headR * 0.08}" r="${headR * 0.06}" fill="#fff"/>
+  <!-- transparent canvas — subject-only coverage for Gate 0 -->
+  <rect width="100%" height="100%" fill="none"/>
+  <!-- layout guides (front upper-body): head / torso / L-R arm boxes -->
+  <rect x="${cx - headR * 1.15}" y="${headY - headR * 1.15}" width="${headR * 2.3}" height="${headR * 2.3}"
+        fill="none" stroke="${guideStroke}" stroke-width="1" stroke-dasharray="4 3"/>
+  <rect x="${cx - headR * 1.05}" y="${bodyTop}" width="${headR * 2.1}" height="${height * 0.92 - bodyTop}"
+        fill="none" stroke="${guideStroke}" stroke-width="1" stroke-dasharray="4 3"/>
+  <rect x="${cx - headR * 1.65}" y="${bodyTop + headR * 0.1}" width="${armW + 4}" height="${armH + 4}"
+        fill="none" stroke="${guideStroke}" stroke-width="1" stroke-dasharray="3 2"/>
+  <rect x="${cx + headR * 1.05}" y="${bodyTop + headR * 0.1}" width="${armW + 4}" height="${armH + 4}"
+        fill="none" stroke="${guideStroke}" stroke-width="1" stroke-dasharray="3 2"/>
+  <!-- BACK HAIR region (distinct hair hue) -->
+  <ellipse cx="${cx}" cy="${headY + headR * 0.35}" rx="${headR * 1.32}" ry="${headR * 1.55}"
+           fill="hsl(${hairH},58%,40%)" data-region="hair"/>
+  <!-- BODY / outfit region (distinct body hue) -->
+  <path d="M ${cx - headR * 0.85} ${bodyTop}
+           Q ${cx} ${bodyTop + headR * 0.15} ${cx + headR * 0.85} ${bodyTop}
+           L ${cx + headR * 1.05} ${height * 0.9}
+           L ${cx - headR * 1.05} ${height * 0.9} Z"
+        fill="hsl(${bodyH},48%,52%)" data-region="body"/>
+  <!-- ARMS L/R — character-own LEFT is viewer's right visually but labeled clearly -->
+  <rect x="${cx - headR * 1.6}" y="${bodyTop + headR * 0.12}" width="${armW}" height="${armH}" rx="10"
+        fill="hsl(${faceH},45%,78%)" data-region="arm_l" data-side="LEFT"/>
+  <rect x="${cx + headR * 1.18}" y="${bodyTop + headR * 0.12}" width="${armW}" height="${armH}" rx="10"
+        fill="hsl(${faceH},45%,78%)" data-region="arm_r" data-side="RIGHT"/>
+  <text x="${cx - headR * 1.6 + armW / 2}" y="${bodyTop + headR * 0.12 + armH * 0.55}"
+        text-anchor="middle" font-family="sans-serif" font-size="${Math.max(10, Math.round(headR * 0.28))}"
+        font-weight="700" fill="rgba(20,40,90,0.75)">L</text>
+  <text x="${cx + headR * 1.18 + armW / 2}" y="${bodyTop + headR * 0.12 + armH * 0.55}"
+        text-anchor="middle" font-family="sans-serif" font-size="${Math.max(10, Math.round(headR * 0.28))}"
+        font-weight="700" fill="rgba(20,40,90,0.75)">R</text>
+  <!-- FACE region (skin hue — separate from hair/body) -->
+  <circle cx="${cx}" cy="${headY}" r="${headR}" fill="hsl(${faceH},55%,88%)"
+          stroke="hsl(20,30%,45%)" stroke-width="2" data-region="face"/>
+  <!-- EYES L/R -->
+  <ellipse cx="${cx - headR * 0.35}" cy="${headY - headR * 0.02}" rx="${headR * 0.17}" ry="${headR * 0.2}"
+           fill="hsl(${eyeH},62%,42%)" data-side="LEFT"/>
+  <ellipse cx="${cx + headR * 0.35}" cy="${headY - headR * 0.02}" rx="${headR * 0.17}" ry="${headR * 0.2}"
+           fill="hsl(${eyeH},62%,42%)" data-side="RIGHT"/>
+  <circle cx="${cx - headR * 0.32}" cy="${headY - headR * 0.06}" r="${headR * 0.055}" fill="#fff"/>
+  <circle cx="${cx + headR * 0.38}" cy="${headY - headR * 0.06}" r="${headR * 0.055}" fill="#fff"/>
+  <text x="${cx - headR * 0.35}" y="${headY + headR * 0.22}" text-anchor="middle"
+        font-family="sans-serif" font-size="${Math.max(8, Math.round(headR * 0.18))}" fill="rgba(0,0,80,0.45)">L</text>
+  <text x="${cx + headR * 0.35}" y="${headY + headR * 0.22}" text-anchor="middle"
+        font-family="sans-serif" font-size="${Math.max(8, Math.round(headR * 0.18))}" fill="rgba(0,0,80,0.45)">R</text>
   <!-- mouth -->
-  <path d="M ${cx - headR * 0.2} ${headY + headR * 0.35} Q ${cx} ${headY + headR * 0.5} ${cx + headR * 0.2} ${headY + headR * 0.35}"
-        fill="none" stroke="hsl(0,50%,45%)" stroke-width="3" stroke-linecap="round"/>
-  <!-- bangs / front hair -->
-  <path d="M ${cx - headR * 1.05} ${headY - headR * 0.2}
-           Q ${cx - headR * 0.4} ${headY - headR * 1.2} ${cx} ${headY - headR * 0.55}
-           Q ${cx + headR * 0.4} ${headY - headR * 1.2} ${cx + headR * 1.05} ${headY - headR * 0.2}
-           Q ${cx} ${headY + headR * 0.15} ${cx - headR * 1.05} ${headY - headR * 0.2} Z"
-        fill="hsl(${hairHue},60%,38%)"/>
-  <text x="${cx}" y="${height - 16}" text-anchor="middle" font-family="sans-serif" font-size="14" fill="rgba(0,0,0,0.55)">
-    ${name} · synthetic master (text stub)
-  </text>
+  <path d="M ${cx - headR * 0.18} ${headY + headR * 0.38} Q ${cx} ${headY + headR * 0.52} ${cx + headR * 0.18} ${headY + headR * 0.38}"
+        fill="none" stroke="hsl(0,48%,48%)" stroke-width="3" stroke-linecap="round"/>
+  <!-- FRONT HAIR / bangs (same hair hue family, slightly darker) -->
+  <path d="M ${cx - headR * 1.02} ${headY - headR * 0.15}
+           Q ${cx - headR * 0.35} ${headY - headR * 1.15} ${cx} ${headY - headR * 0.5}
+           Q ${cx + headR * 0.35} ${headY - headR * 1.15} ${cx + headR * 1.02} ${headY - headR * 0.15}
+           Q ${cx} ${headY + headR * 0.12} ${cx - headR * 1.02} ${headY - headR * 0.15} Z"
+        fill="hsl(${hairH},62%,34%)" data-region="hair_front"/>
+  <text x="${cx}" y="${height - 12}" text-anchor="middle" font-family="sans-serif" font-size="12"
+        fill="rgba(0,0,0,0.4)">${name} · rig-friendly synthetic master</text>
 </svg>`;
+}
+
+/**
+ * Optional live refine: restyle synthetic master via provider imageEdit.
+ * Returns null when dry-run / unconfigured — callers keep the synthetic master.
+ */
+export async function refineMasterViaImageEdit(opts: {
+  projectRoot: string;
+  masterPath: string;
+  prompt: string;
+  provider?: string;
+}): Promise<{ outputPath: string; method: string } | null> {
+  const dry =
+    process.env.AI2LIVE_MODEL_DRY_RUN === "1" ||
+    process.env.AI2LIVE_MODEL_DRY_RUN === "true";
+  if (dry) return null;
+  try {
+    const { createProvider, resolveProviderId, providerConfigured } = await import(
+      "@ai2live/model-providers"
+    );
+    const providerId = resolveProviderId(opts.provider);
+    if (!providerConfigured(providerId)) return null;
+    const provider = createProvider(providerId, { cwd: opts.projectRoot });
+    if (!provider.imageEdit) return null;
+    const out = path.join(opts.projectRoot, "design", "master_neutral_live.png");
+    const r = await provider.imageEdit({
+      prompt:
+        opts.prompt +
+        " Front upper-body anime character, clear left/right limbs, separate face/hair/body colors, rig-friendly T-pose, transparent background.",
+      inputImagePath: opts.masterPath,
+      outputPath: out,
+      projectRoot: opts.projectRoot,
+    });
+    if (r.dryRun) return null;
+    return { outputPath: r.outputPath, method: r.method ?? "images_api" };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -194,6 +268,17 @@ export async function initProjectFromText(opts: InitFromTextOptions): Promise<In
   const masterPath = path.join(root, "design", "master_neutral.png");
   await sharp(Buffer.from(svg)).png().toFile(masterPath);
   await sharp(Buffer.from(svg)).png().toFile(path.join(root, "design", "reference.png"));
+
+  let method: InitFromTextResult["method"] = "synthetic_svg_master";
+  const live = await refineMasterViaImageEdit({
+    projectRoot: root,
+    masterPath,
+    prompt: String(spec.identity_prompt ?? opts.text).slice(0, 400),
+  });
+  if (live) {
+    await sharp(live.outputPath).ensureAlpha().png().toFile(masterPath);
+    method = "synthetic_plus_live_refine";
+  }
 
   // Crop template layers from synthetic master using bounds (visible stub assets)
   const layers: LayerNode[] = [];
@@ -296,13 +381,35 @@ export async function initProjectFromText(opts: InitFromTextOptions): Promise<In
     ) + "\n"
   );
 
+  await writeFile(
+    path.join(root, "design", "master_bindability.json"),
+    JSON.stringify(
+      {
+        version: "0.1",
+        method,
+        rig_friendly: true,
+        layout: "front_upper_body",
+        features: [
+          "transparent_canvas",
+          "clear_L_R_labels",
+          "separate_face_hair_body_hues",
+          "upper_body_layout_guides",
+        ],
+        live_refine: method === "synthetic_plus_live_refine",
+        note: "Dry-run synthetic path is DoD-complete for Gate 0; live imageEdit refine is optional when provider keys set.",
+      },
+      null,
+      2
+    ) + "\n"
+  );
+
   return {
     projectRoot: root,
     characterPath,
     characterSpecPath,
     manifestPath,
     masterPath,
-    method: "synthetic_svg_master",
+    method,
     canvas: { width, height },
   };
 }

@@ -3,7 +3,7 @@
  * Detects AI2LIVE_PSD2LIVE_CMD or AI2LIVE_PSD2LIVE_MCP_URL — never vendors GPL.
  * Always writes invoke_log.json with richer skipped reasons + safe check when CMD set.
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -44,12 +44,22 @@ function useMockRig(): boolean {
   return v !== "0" && v !== "false" && v !== "off" && v !== "no";
 }
 
-function resolveMockCmd(): string | undefined {
+async function resolveMockCmd(): Promise<string | undefined> {
   if (!useMockRig()) return undefined;
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../../scripts/mock-rig/psd2live-mock.mjs"
-  );
+  const candidates = [
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/mock-rig/psd2live-mock.mjs"),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../scripts/mock-rig/psd2live-mock.mjs"),
+    path.resolve(process.cwd(), "scripts/mock-rig/psd2live-mock.mjs"),
+  ];
+  for (const c of candidates) {
+    try {
+      await access(c);
+      return c;
+    } catch {
+      /* try next */
+    }
+  }
+  return candidates[0];
 }
 
 
@@ -129,7 +139,7 @@ export async function invokePsd2LiveSmoke(opts: {
   const mcp = resolveMcpUrl();
 
   if (!cmd && !mcp) {
-    const mockCmd = resolveMockCmd();
+    const mockCmd = await resolveMockCmd();
     if (mockCmd && useMockRig()) {
       const node = process.execPath;
       const help = await run(node, [mockCmd, "--help"], outDir, 10_000);

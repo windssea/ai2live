@@ -279,6 +279,19 @@ export async function runStaticQc(options: StaticQcOptions): Promise<ValidationR
     }
   }
 
+  // DoD #11: always emit failure_localization.json (layer_id + problem_type)
+  try {
+    const { writeFailureLocalization } = await import("@ai2live/vision-review");
+    await writeFailureLocalization({
+      projectRoot,
+      cvFindings: findings,
+      metrics,
+      passed: !findings.some((f) => f.severity === "ERROR"),
+    });
+  } catch {
+    /* optional */
+  }
+
   const passed = !findings.some((f) => f.severity === "ERROR");
   const report: ValidationReport = {
     id: createStableId("vr", `${manifest.id}-static`),

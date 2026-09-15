@@ -7,6 +7,7 @@ import {
 } from "./merge.js";
 import type { CvVerdict, DualJudgeResult } from "./types.js";
 import { runVlmReview } from "./vlm-review.js";
+import { writeFailureLocalization } from "./failure-localization.js";
 
 export interface DualJudgeOptions {
   projectRoot: string;
@@ -57,6 +58,22 @@ export async function runDualJudge(opts: DualJudgeOptions): Promise<DualJudgeRes
     const dir = path.join(root, "validation");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "dual_judge.json"), JSON.stringify(result, null, 2) + "\n");
+    await writeFailureLocalization({
+      projectRoot: root,
+      dual: result,
+      cvFindings: opts.cvReport?.findings as
+        | Array<{
+            id?: string;
+            severity?: string;
+            type?: string;
+            message?: string;
+            related_layers?: string[];
+            recommended_action?: string;
+          }>
+        | undefined,
+      metrics: opts.cvReport?.metrics,
+      passed: result.validated,
+    });
   }
   return result;
 }

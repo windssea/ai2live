@@ -74,6 +74,14 @@ pnpm compile:example
 pnpm validate:example
 ```
 
+### 3b. Text → rig-friendly master
+
+```bash
+export AI2LIVE_MODEL_DRY_RUN=1
+ai2live init ./my-char --text "Pink hair anime girl, blue eyes, upper body"
+# design/master_neutral.png passes Gate 0; optional live refine when keys set + dry-run off
+```
+
 ### 4. Unified pipeline
 
 ```bash

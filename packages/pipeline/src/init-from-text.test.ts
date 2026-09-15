@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { initProjectFromText, textToCharacterSpec } from "./init-from-text.js";
 import { createStableId } from "@ai2live/domain";
+import { runGate0MasterBindability } from "@ai2live/qc-engine";
+import { assertLayerManifest } from "@ai2live/manifest-schema";
+import type { LayerManifest } from "@ai2live/domain";
 
 describe("initFromText", () => {
   let dir: string;
@@ -41,4 +44,25 @@ describe("initFromText", () => {
     expect(graph.edges[0].completion_required).toBe(true);
     expect(r.method).toBe("synthetic_svg_master");
   });
+
+  it("synthetic rig-friendly master passes Gate 0 hard checks", async () => {
+    process.env.AI2LIVE_MODEL_DRY_RUN = "1";
+    const r = await initProjectFromText({
+      projectRoot: dir,
+      text: "Pink long hair anime girl with blue eyes, upper body front pose",
+      characterName: "Momo",
+      width: 512,
+      height: 768,
+    });
+    const manifest = assertLayerManifest(
+      JSON.parse(await readFile(r.manifestPath, "utf8"))
+    ) as LayerManifest;
+    const g0 = await runGate0MasterBindability(dir, manifest, r.masterPath);
+    expect(g0.passed).toBe(true);
+    expect(g0.metrics.master_frontish_score).toBe(1);
+    expect(g0.metrics.master_lr_balance ?? 0).toBeGreaterThan(0.45);
+    expect(g0.metrics.master_hue_buckets ?? 0).toBeGreaterThanOrEqual(2);
+    expect(g0.findings.some((f) => f.severity === "ERROR")).toBe(false);
+    await access(path.join(dir, "design", "master_bindability.json"));
+  }, 60_000);
 });
