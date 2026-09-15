@@ -1,23 +1,27 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile, readFile, access, copyFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, access } from "node:fs/promises";
 import path from "node:path";
 import type { LayerManifest } from "@ai2live/domain";
 import { assertLayerManifest } from "@ai2live/manifest-schema";
 import {
   createProvider,
   resolveProviderId,
-  isDryRun,
   type ModelProvider,
   type ProviderId,
 } from "@ai2live/model-providers";
+import { minRegionInpaint } from "@ai2live/image-client";
 
 export type OcclusionScenario = "bangs_under_face" | "face_over_back_hair" | "body_over_arm_root";
 
+/** Canonical DoD provenance (+ legacy aliases kept for readers). */
 export type CompletionMethod =
-  | "provider_image_edit"
-  | "multi_scale_neighbor_blend"
-  | "deterministic_dilate_fill"; // legacy name kept for provenance readers
+  | "image_edit"
+  | "opencv_inpaint"
+  | "neighbor_blend"
+  | "provider_image_edit" // legacy
+  | "multi_scale_neighbor_blend" // legacy
+  | "deterministic_dilate_fill"; // legacy
 
 export interface CompletionMaskResult {
   /** Full-canvas RGBA mask (white = complete here). */
@@ -41,17 +45,12 @@ export interface OcclusionScenarioResult {
 /**
  * Build DESIGN-aligned completion mask:
  *   completion = dilate(occluder_alpha) ∩ (occludee_alpha < threshold)
- *
- * Heuristic: we do not yet consume Occlusion Graph region_mask / motion_risk fields.
  */
 export function buildCompletionMask(opts: {
   width: number;
   height: number;
-  /** Occluder full-canvas RGBA (or alpha-bearing). */
   occluderRgba: Buffer;
-  /** Occludee full-canvas RGBA. */
   occludeeRgba: Buffer;
-  /** Optional bbox clamp in pixels. */
   region?: { x0: number; y0: number; x1: number; y1: number };
   dilateRadius?: number;
   missingThreshold?: number;
@@ -69,10 +68,9 @@ export function buildCompletionMask(opts: {
 
   const occluderBin = Buffer.alloc(width * height);
   for (let i = 0, p = 0; i < occluderRgba.length; i += 4, p++) {
-    occluderBin[p] = occluderRgba[i + 3] >= occluderThreshold ? 1 : 0;
+    occluderBin[p] = occluderRgba[i + 3]! >= occluderThreshold ? 1 : 0;
   }
 
-  // Multi-pass binary dilate (chebyshev / square kernel)
   let dilated = occluderBin;
   const r = Math.max(1, dilateRadius);
   for (let pass = 0; pass < r; pass++) {
@@ -108,7 +106,7 @@ export function buildCompletionMask(opts: {
     for (let x = x0; x < x1; x++) {
       const p = y * width + x;
       const i = p * 4;
-      const missing = occludeeRgba[i + 3] < missingThreshold;
+      const missing = occludeeRgba[i + 3]! < missingThreshold;
       if (dilated[p] && missing) {
         maskRgba[i] = maskRgba[i + 1] = maskRgba[i + 2] = maskRgba[i + 3] = 255;
         opaque += 1;
@@ -121,7 +119,6 @@ export function buildCompletionMask(opts: {
 
 /**
  * Fallback completion: multi-scale neighbor sampling + soft edge blend.
- * Better than flat mean fill, but still a heuristic — not full DESIGN inpaint / Poisson.
  */
 export function neighborBlendComplete(opts: {
   width: number;
@@ -133,11 +130,10 @@ export function neighborBlendComplete(opts: {
   const out = Buffer.from(baseRgba);
   const radii = [2, 4, 8, 16, 32];
 
-  // Pass 1: for each masked pixel, sample nearest opaque neighbor at growing radii
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      if (maskRgba[i + 3] < 128) continue;
+      if (maskRgba[i + 3]! < 128) continue;
 
       let found = false;
       let sr = 0,
@@ -152,14 +148,13 @@ export function neighborBlendComplete(opts: {
             const ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
             const ni = (ny * width + nx) * 4;
-            // Prefer already-opaque base pixels outside the completion mask
-            if (baseRgba[ni + 3] < 200) continue;
-            if (maskRgba[ni + 3] >= 128 && (dx !== 0 || dy !== 0)) continue;
+            if (baseRgba[ni + 3]! < 200) continue;
+            if (maskRgba[ni + 3]! >= 128 && (dx !== 0 || dy !== 0)) continue;
             const dist = Math.hypot(dx, dy) || 0.5;
             const w = 1 / dist;
-            sr += baseRgba[ni] * w;
-            sg += baseRgba[ni + 1] * w;
-            sb += baseRgba[ni + 2] * w;
+            sr += baseRgba[ni]! * w;
+            sg += baseRgba[ni + 1]! * w;
+            sb += baseRgba[ni + 2]! * w;
             sw += w;
           }
         }
@@ -175,7 +170,6 @@ export function neighborBlendComplete(opts: {
         out[i + 2] = Math.round(sb / sw);
         out[i + 3] = 230;
       } else {
-        // Last-resort local mean of any opaque pixels in a large window
         let tr = 0,
           tg = 0,
           tb = 0,
@@ -186,10 +180,10 @@ export function neighborBlendComplete(opts: {
             const ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
             const ni = (ny * width + nx) * 4;
-            if (baseRgba[ni + 3] > 200) {
-              tr += baseRgba[ni];
-              tg += baseRgba[ni + 1];
-              tb += baseRgba[ni + 2];
+            if (baseRgba[ni + 3]! > 200) {
+              tr += baseRgba[ni]!;
+              tg += baseRgba[ni + 1]!;
+              tb += baseRgba[ni + 2]!;
               tn++;
             }
           }
@@ -202,18 +196,17 @@ export function neighborBlendComplete(opts: {
     }
   }
 
-  // Pass 2: simple "poisson-ish" edge soften — average with neighbors twice on mask border
   for (let pass = 0; pass < 2; pass++) {
     const snap = Buffer.from(out);
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const i = (y * width + x) * 4;
-        if (maskRgba[i + 3] < 128) continue;
+        if (maskRgba[i + 3]! < 128) continue;
         let border = false;
         for (let dy = -1; dy <= 1 && !border; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             const mi = ((y + dy) * width + (x + dx)) * 4;
-            if (maskRgba[mi + 3] < 128) border = true;
+            if (maskRgba[mi + 3]! < 128) border = true;
           }
         }
         if (!border) continue;
@@ -225,18 +218,17 @@ export function neighborBlendComplete(opts: {
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             const ni = ((y + dy) * width + (x + dx)) * 4;
-            sr += snap[ni];
-            sg += snap[ni + 1];
-            sb += snap[ni + 2];
-            sa += snap[ni + 3];
+            sr += snap[ni]!;
+            sg += snap[ni + 1]!;
+            sb += snap[ni + 2]!;
+            sa += snap[ni + 3]!;
             n++;
           }
         }
-        // Blend RGB with neighbors; keep alpha from the fill (avoid transparent dilution)
-        out[i] = Math.round(0.45 * snap[i] + 0.55 * (sr / n));
-        out[i + 1] = Math.round(0.45 * snap[i + 1] + 0.55 * (sg / n));
-        out[i + 2] = Math.round(0.45 * snap[i + 2] + 0.55 * (sb / n));
-        out[i + 3] = Math.max(snap[i + 3], Math.round(0.7 * snap[i + 3] + 0.3 * (sa / n)));
+        out[i] = Math.round(0.45 * snap[i]! + 0.55 * (sr / n));
+        out[i + 1] = Math.round(0.45 * snap[i + 1]! + 0.55 * (sg / n));
+        out[i + 2] = Math.round(0.45 * snap[i + 2]! + 0.55 * (sb / n));
+        out[i + 3] = Math.max(snap[i + 3]!, Math.round(0.7 * snap[i + 3]! + 0.3 * (sa / n)));
       }
     }
   }
@@ -278,16 +270,14 @@ async function loadLayerOrEmpty(
 }
 
 /**
- * M2 occlusion completion — DESIGN-aligned path:
+ * M2 occlusion completion — prefers min-region inpaint:
  * 1) Build completion mask = occluder dilated ∩ missing under-layer
- * 2) Prefer provider.imageEdit when configured and not forced-fallback
- * 3) Else multi-scale dilate + neighbor sampling / soft blend (heuristic, not full inpaint)
+ * 2) minRegionInpaint → image_edit | opencv_inpaint | neighbor_blend
  */
 export async function completeOcclusionScenarios(opts: {
   projectRoot: string;
   scenarios?: OcclusionScenario[];
   provider?: ModelProvider | ProviderId | string;
-  /** Force local blend even if provider imageEdit exists. */
   forceLocalFallback?: boolean;
   dryRun?: boolean;
 }): Promise<{
@@ -310,14 +300,17 @@ export async function completeOcclusionScenarios(opts: {
   const maskDir = path.join(outDir, "masks");
   await mkdir(maskDir, { recursive: true });
 
-  let provider: ModelProvider | undefined;
-  if (typeof opts.provider === "object" && opts.provider && "chat" in opts.provider) {
-    provider = opts.provider;
+  let providerId: string | undefined;
+  if (typeof opts.provider === "string") {
+    providerId = opts.provider;
+  } else if (typeof opts.provider === "object" && opts.provider && "id" in opts.provider) {
+    providerId = opts.provider.id;
   } else if (!opts.forceLocalFallback) {
     try {
-      provider = createProvider(opts.provider ?? resolveProviderId(), { cwd: root });
+      providerId = resolveProviderId();
+      createProvider(providerId, { cwd: root });
     } catch {
-      provider = undefined;
+      providerId = undefined;
     }
   }
 
@@ -344,7 +337,6 @@ export async function completeOcclusionScenarios(opts: {
     const occludeeRgba = await loadLayerOrEmpty(root, occludee.source.asset_path, width, height);
     if (!occludeeRgba) continue;
 
-    // Occluder: prefer its asset; else synthesize alpha from canvas_bounds rect
     let occluderRgba = await loadLayerOrEmpty(root, occluder.source.asset_path, width, height);
     if (!occluderRgba) {
       occluderRgba = Buffer.alloc(width * height * 4, 0);
@@ -400,74 +392,27 @@ export async function completeOcclusionScenarios(opts: {
     const outRel = path.posix.join("layers/completions", `${scenario}.png`);
     const outAbs = path.join(root, outRel);
 
-    let completion_method: CompletionMethod = "multi_scale_neighbor_blend";
-    let note =
-      "Heuristic multi-scale neighbor blend + soft border average — not full DESIGN Poisson/inpaint.";
+    const tmpIn = path.join(outDir, `._${scenario}_input.png`);
+    await sharp(occludeeRgba, { raw: { width, height, channels: 4 } }).png().toFile(tmpIn);
 
-    const canEdit = Boolean(provider?.imageEdit) && !opts.forceLocalFallback;
-
-    if (canEdit && provider?.imageEdit) {
-      // Shared path for live + dry-run: provider.imageEdit (dry-run is deterministic copy/stub).
-      const tmpIn = path.join(outDir, `._${scenario}_input.png`);
-      await sharp(occludeeRgba, { raw: { width, height, channels: 4 } }).png().toFile(tmpIn);
-      try {
-        const edited = await provider.imageEdit({
-          prompt,
-          inputImagePath: tmpIn,
-          maskPath: path.join(root, maskRel),
-          outputPath: outAbs,
-          projectRoot: root,
-        });
-        // If dry-run only copied input, still apply local blend into masked region so output
-        // differs deterministically and remains useful for QC demos.
-        if (edited.dryRun || isDryRun()) {
-          const blended = neighborBlendComplete({
-            width,
-            height,
-            baseRgba: occludeeRgba,
-            maskRgba: mask.maskRgba,
-          });
-          await sharp(blended, { raw: { width, height, channels: 4 } }).png().toFile(outAbs);
-          completion_method = "multi_scale_neighbor_blend";
-          note =
-            "Dry-run: same imageEdit code path invoked, then deterministic neighbor-blend applied under completion mask.";
-        } else {
-          completion_method = "provider_image_edit";
-          note = `Live imageEdit via ${provider.id}; method=${edited.method ?? "images_api"}`;
-          // Ensure file exists at expected path
-          if (path.resolve(edited.outputPath) !== path.resolve(outAbs)) {
-            await copyFile(edited.outputPath, outAbs);
-          }
-        }
-      } catch (err) {
-        const blended = neighborBlendComplete({
-          width,
-          height,
-          baseRgba: occludeeRgba,
-          maskRgba: mask.maskRgba,
-        });
-        await sharp(blended, { raw: { width, height, channels: 4 } }).png().toFile(outAbs);
-        completion_method = "multi_scale_neighbor_blend";
-        note = `imageEdit failed (${(err as Error).message}); fell back to neighbor blend.`;
-      }
-    } else {
-      const blended = neighborBlendComplete({
-        width,
-        height,
-        baseRgba: occludeeRgba,
-        maskRgba: mask.maskRgba,
-      });
-      await sharp(blended, { raw: { width, height, channels: 4 } }).png().toFile(outAbs);
-      completion_method = "multi_scale_neighbor_blend";
-    }
+    const painted = await minRegionInpaint({
+      imagePath: tmpIn,
+      maskPath: path.join(root, maskRel),
+      outputPath: outAbs,
+      projectRoot: root,
+      prompt,
+      provider: providerId,
+      forceLocal: Boolean(opts.forceLocalFallback),
+      dryRun: opts.dryRun,
+    });
 
     outputs.push({
       scenario,
       path: outRel,
       mask_path: maskRel,
-      completion_method,
+      completion_method: painted.completion_method,
       prompt_hash,
-      note,
+      note: painted.note,
     });
   }
 
@@ -476,11 +421,12 @@ export async function completeOcclusionScenarios(opts: {
     reportPath,
     JSON.stringify(
       {
-        version: "0.2",
+        version: "0.3",
         method_field: "completion_method",
+        methods: ["image_edit", "opencv_inpaint", "neighbor_blend"],
         scenarios: outputs,
         design_note:
-          "Completion mask = occluder_dilated ∩ missing(occludee). Prefer provider.imageEdit; fallback is multi-scale neighbor blend (heuristic, not full inpaint).",
+          "Completion mask = occluder_dilated ∩ missing(occludee). Prefer minRegionInpaint (live image_edit → worker opencv/telea → neighbor_blend).",
       },
       null,
       2

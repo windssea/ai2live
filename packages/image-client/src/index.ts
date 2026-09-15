@@ -141,56 +141,31 @@ export async function segmentViaWorker(req: SegmentRequest): Promise<SegmentResu
   return { masks, warnings };
 }
 
+/** @deprecated Prefer minRegionInpaint — kept for callers that only need worker POST. */
 export async function inpaintViaWorker(opts: {
   imagePath: string;
   maskPath: string;
   outputPath?: string;
   projectRoot?: string;
 }): Promise<{ outputPath: string; method: string }> {
-  const base = imageWorkerUrl();
-  const root = opts.projectRoot ? path.resolve(opts.projectRoot) : process.cwd();
-  const outputPath =
-    opts.outputPath ?? path.join(root, "previews", `inpaint_${Date.now()}.png`);
-  await mkdir(path.dirname(outputPath), { recursive: true });
-
-  if (base) {
-    try {
-      const res = await fetch(`${base}/inpaint`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_path: opts.imagePath,
-          mask_path: opts.maskPath,
-        }),
-      });
-      if (!res.ok) throw new Error(`worker ${res.status}`);
-      const data = (await res.json()) as { png_b64?: string; note?: string };
-      if (data.png_b64) {
-        await writeFile(outputPath, Buffer.from(data.png_b64, "base64"));
-      } else {
-        try {
-          await access(opts.imagePath);
-          await copyFile(opts.imagePath, outputPath);
-        } catch {
-          await writeFile(outputPath, TINY_PNG);
-        }
-      }
-      return { outputPath, method: "http_worker" };
-    } catch {
-      /* fall through */
-    }
-  }
-
-  try {
-    await access(opts.imagePath);
-    await copyFile(opts.imagePath, outputPath);
-  } catch {
-    await writeFile(outputPath, TINY_PNG);
-  }
-  return {
-    outputPath,
-    method: isDryRun() || !base ? "stub_copy" : "stub_copy_after_worker_fail",
-  };
+  const { minRegionInpaint } = await import("./inpaint.js");
+  const r = await minRegionInpaint({
+    imagePath: opts.imagePath,
+    maskPath: opts.maskPath,
+    outputPath: opts.outputPath,
+    projectRoot: opts.projectRoot,
+    forceLocal: true,
+    dryRun: true,
+  });
+  return { outputPath: r.outputPath, method: r.method };
 }
+
+export {
+  minRegionInpaint,
+  neighborBlendFiles,
+  type MinRegionInpaintRequest,
+  type MinRegionInpaintResult,
+  type InpaintCompletionMethod,
+} from "./inpaint.js";
 
 export { readFile };

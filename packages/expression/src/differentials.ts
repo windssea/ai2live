@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile, readFile, copyFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { LayerManifest, CanvasBounds } from "@ai2live/domain";
 import { assertLayerManifest } from "@ai2live/manifest-schema";
@@ -11,11 +11,15 @@ import {
   type ModelProvider,
   type ProviderId,
 } from "@ai2live/model-providers";
+import { minRegionInpaint } from "@ai2live/image-client";
 
 export type ExpressionKind = "mouth_open" | "eye_close" | "smile" | "special_eye";
 
 export type ExpressionMethod =
-  | "provider_image_edit"
+  | "image_edit"
+  | "opencv_inpaint"
+  | "neighbor_blend"
+  | "provider_image_edit" // legacy
   | "dry_run_roi_morph_stub"
   | "template_composite_stub";
 
@@ -23,11 +27,13 @@ export interface ExpressionDifferentialResult {
   kind: ExpressionKind;
   path: string;
   method: ExpressionMethod;
+  completion_method?: "image_edit" | "opencv_inpaint" | "neighbor_blend";
   prompt_hash: string;
   provenance: {
     prompt: string;
     prompt_hash: string;
     method: ExpressionMethod;
+    completion_method?: string;
     dry_run: boolean;
     provider?: string;
   };
@@ -52,10 +58,7 @@ function hashPrompt(prompt: string): string {
   return createHash("sha256").update(prompt).digest("hex").slice(0, 16);
 }
 
-/**
- * Dry-run / stub path: soft morph of ROI (blur + tint overlay) — still labeled stub,
- * but wired through the same generateExpressionDifferentials entry as live imageEdit.
- */
+/** Soft morph of ROI — used when inpaint path returns empty / as enrichment under mask. */
 async function stubRoiMorph(
   masterRgba: Buffer,
   width: number,
@@ -77,16 +80,15 @@ async function stubRoiMorph(
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) {
         if (x < 0 || y < 0 || x >= width || y >= height) continue;
-        // Soft falloff toward ROI edge
         const tx = (x - x0) / Math.max(1, x1 - x0);
         const ty = (y - y0) / Math.max(1, y1 - y0);
         const edge = Math.min(tx, 1 - tx, ty, 1 - ty);
         const w = Math.min(1, edge * 4) * alphaBlend;
         const i = (y * width + x) * 4;
-        img[i] = Math.round(img[i] * (1 - w) + rgba[0] * w);
-        img[i + 1] = Math.round(img[i + 1] * (1 - w) + rgba[1] * w);
-        img[i + 2] = Math.round(img[i + 2] * (1 - w) + rgba[2] * w);
-        img[i + 3] = Math.max(img[i + 3], Math.round(rgba[3] * w + img[i + 3] * (1 - w)));
+        img[i] = Math.round(img[i]! * (1 - w) + rgba[0] * w);
+        img[i + 1] = Math.round(img[i + 1]! * (1 - w) + rgba[1] * w);
+        img[i + 2] = Math.round(img[i + 2]! * (1 - w) + rgba[2] * w);
+        img[i + 3] = Math.max(img[i + 3]!, Math.round(rgba[3] * w + img[i + 3]! * (1 - w)));
       }
     }
   };
@@ -140,9 +142,37 @@ function roisForKind(
   return eyes;
 }
 
+/** Feathered ROI mask (white = edit region). */
+function buildRoiMask(
+  width: number,
+  height: number,
+  rois: CanvasBounds[],
+  feather = 2
+): Buffer {
+  const mask = Buffer.alloc(width * height * 4, 0);
+  for (const b of rois) {
+    const x0 = Math.max(0, Math.round(b.x * width) - feather);
+    const y0 = Math.max(0, Math.round(b.y * height) - feather);
+    const x1 = Math.min(width, Math.round((b.x + b.w) * width) + feather);
+    const y1 = Math.min(height, Math.round((b.y + b.h) * height) + feather);
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const i = (y * width + x) * 4;
+        // Soft falloff near edge of expanded ROI
+        const dx = Math.min(x - x0, x1 - 1 - x);
+        const dy = Math.min(y - y0, y1 - 1 - y);
+        const edge = Math.min(dx, dy);
+        const a = edge < feather ? Math.round(255 * ((edge + 1) / (feather + 1))) : 255;
+        mask[i] = mask[i + 1] = mask[i + 2] = 255;
+        mask[i + 3] = Math.max(mask[i + 3]!, a);
+      }
+    }
+  }
+  return mask;
+}
+
 /**
- * M3 expression differentials via image-edit (Edit Delta prompts).
- * Live: provider.imageEdit. Dry-run: same code path, then ROI soft-morph stub labeled as stub.
+ * M3 expression differentials — prefer min-region inpaint over ROI with Edit Delta prompt.
  */
 export async function generateExpressionDifferentials(opts: {
   projectRoot: string;
@@ -167,15 +197,18 @@ export async function generateExpressionDifferentials(opts: {
   const eyeL = manifest.layers.find((l) => l.semantic === "EYE" && l.side === "LEFT");
   const eyeR = manifest.layers.find((l) => l.semantic === "EYE" && l.side === "RIGHT");
 
-  let provider: ModelProvider | undefined;
+  let providerId: string | undefined;
   if (!opts.forceStub) {
-    if (typeof opts.provider === "object" && opts.provider && "chat" in opts.provider) {
-      provider = opts.provider;
+    if (typeof opts.provider === "object" && opts.provider && "id" in opts.provider) {
+      providerId = opts.provider.id;
+    } else if (typeof opts.provider === "string") {
+      providerId = opts.provider;
     } else {
       try {
-        provider = createProvider(opts.provider ?? resolveProviderId(), { cwd: root });
+        providerId = resolveProviderId();
+        createProvider(providerId, { cwd: root });
       } catch {
-        provider = undefined;
+        providerId = undefined;
       }
     }
   }
@@ -191,51 +224,64 @@ export async function generateExpressionDifferentials(opts: {
     const rois = roisForKind(kind, mouth, eyeL, eyeR);
 
     let method: ExpressionMethod = "dry_run_roi_morph_stub";
-    let providerId: string | undefined;
+    let completion_method: "image_edit" | "opencv_inpaint" | "neighbor_blend" | undefined;
 
-    const canEdit = Boolean(provider?.imageEdit) && !opts.forceStub;
+    if (rois.length > 0 && !opts.forceStub) {
+      const maskRel = path.posix.join("design/differentials/masks", `${kind}_mask.png`);
+      const maskAbs = path.join(root, maskRel);
+      await mkdir(path.dirname(maskAbs), { recursive: true });
+      const maskRgba = buildRoiMask(width, height, rois, 2);
+      await sharp(maskRgba, { raw: { width, height, channels: 4 } }).png().toFile(maskAbs);
 
-    if (canEdit && provider?.imageEdit) {
-      providerId = provider.id;
+      // Seed ROI with morph stub so dry-run/local inpaint has something to blend from
+      const seeded = await stubRoiMorph(masterRgba, width, height, kind, rois);
+      const seedPath = path.join(outDir, `._${kind}_seed.png`);
+      await sharp(seeded, { raw: { width, height, channels: 4 } }).png().toFile(seedPath);
+
       try {
-        const edited = await provider.imageEdit({
-          prompt,
-          inputImagePath: masterPath,
+        const painted = await minRegionInpaint({
+          imagePath: seedPath,
+          maskPath: maskAbs,
           outputPath: abs,
           projectRoot: root,
+          prompt,
+          provider: providerId,
+          forceLocal: Boolean(opts.forceStub),
+          dryRun: opts.dryRun,
         });
-        if (edited.dryRun || isDryRun()) {
-          // Same code path as live; improve stub with ROI morph so dry-run is still useful.
-          const stub = await stubRoiMorph(masterRgba, width, height, kind, rois);
-          await sharp(stub, { raw: { width, height, channels: 4 } }).png().toFile(abs);
-          method = "dry_run_roi_morph_stub";
-        } else {
-          method = "provider_image_edit";
-          if (path.resolve(edited.outputPath) !== path.resolve(abs)) {
-            await copyFile(edited.outputPath, abs);
-          }
-        }
+        completion_method = painted.completion_method;
+        method =
+          painted.completion_method === "image_edit"
+            ? "image_edit"
+            : painted.completion_method === "opencv_inpaint"
+              ? "opencv_inpaint"
+              : isDryRun() || opts.dryRun
+                ? "dry_run_roi_morph_stub"
+                : "neighbor_blend";
       } catch {
-        const stub = await stubRoiMorph(masterRgba, width, height, kind, rois);
-        await sharp(stub, { raw: { width, height, channels: 4 } }).png().toFile(abs);
+        await sharp(seeded, { raw: { width, height, channels: 4 } }).png().toFile(abs);
         method = "dry_run_roi_morph_stub";
+        completion_method = "neighbor_blend";
       }
     } else {
       const stub = await stubRoiMorph(masterRgba, width, height, kind, rois);
       await sharp(stub, { raw: { width, height, channels: 4 } }).png().toFile(abs);
       method = "template_composite_stub";
+      completion_method = "neighbor_blend";
     }
 
     differentials.push({
       kind,
       path: rel,
       method,
+      completion_method,
       prompt_hash,
       provenance: {
         prompt,
         prompt_hash,
         method,
-        dry_run: isDryRun() || Boolean(opts.dryRun) || method !== "provider_image_edit",
+        completion_method,
+        dry_run: isDryRun() || Boolean(opts.dryRun) || completion_method !== "image_edit",
         ...(providerId ? { provider: providerId } : {}),
       },
     });
@@ -246,10 +292,10 @@ export async function generateExpressionDifferentials(opts: {
     reportPath,
     JSON.stringify(
       {
-        version: "0.2",
+        version: "0.3",
         rule: "full_character_differential",
         differentials,
-        note: "Live uses provider.imageEdit with Edit Delta prompts. Dry-run shares that call path then applies ROI soft-morph stub (labeled stub).",
+        note: "Prefer minRegionInpaint on feathered ROI mask (image_edit → opencv_inpaint → neighbor_blend). Dry-run seeds ROI morph then inpaint path.",
       },
       null,
       2

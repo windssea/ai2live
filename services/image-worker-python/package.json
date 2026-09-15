@@ -4,6 +4,6 @@
   "private": true,
   "scripts": {
     "build": "echo skip",
-    "test": "echo skip"
+    "test": "PYTHONPATH=src python3 -m ai2live_worker.main --demo"
   }
 }

@@ -102,12 +102,18 @@ importers:
       '@ai2live/history':
         specifier: workspace:*
         version: link:../../packages/history
+      '@ai2live/image-client':
+        specifier: workspace:*
+        version: link:../../packages/image-client
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../../packages/manifest-schema
       '@ai2live/model-providers':
         specifier: workspace:*
         version: link:../../packages/model-providers
+      '@ai2live/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
       '@ai2live/psd-compiler':
         specifier: workspace:*
         version: link:../../packages/psd-compiler
@@ -226,6 +232,9 @@ importers:
       '@ai2live/domain':
         specifier: workspace:*
         version: link:../domain
+      '@ai2live/image-client':
+        specifier: workspace:*
+        version: link:../image-client
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../manifest-schema
@@ -267,6 +276,9 @@ importers:
       '@ai2live/model-providers':
         specifier: workspace:*
         version: link:../model-providers
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -317,6 +329,9 @@ importers:
       '@ai2live/domain':
         specifier: workspace:*
         version: link:../domain
+      '@ai2live/image-client':
+        specifier: workspace:*
+        version: link:../image-client
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../manifest-schema
