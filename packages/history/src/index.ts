@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, copyFile, access } from "node:fs/promises";
+import { mkdir, readFile, writeFile, copyFile, access, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { createStableId } from "@ai2live/domain";
 
@@ -126,6 +126,13 @@ export class HistoryStore {
 
 export const DEFAULT_HISTORY_PATH = path.posix.join("validation", "history.json");
 
+/** Preferred snapshot root (DESIGN batch5). Legacy: validation/revisions/<rev>/ */
+export const SNAPSHOT_ROOT = path.posix.join(".ai2live", "snapshots");
+export const LEGACY_SNAPSHOT_ROOT = path.posix.join("validation", "revisions");
+
+/** Key paths snapshotted for revision restore. */
+export const IMPORTANT_SNAPSHOT_GLOBS = ["spec", "layers", "validation/report.json"] as const;
+
 export async function loadHistoryStore(
   projectRoot: string,
   relativePath = DEFAULT_HISTORY_PATH
@@ -153,9 +160,128 @@ export async function saveHistoryStore(
   return abs;
 }
 
+async function copyFileSafe(src: string, dest: string): Promise<boolean> {
+  try {
+    await access(src);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await copyFile(src, dest);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listFilesRecursive(dir: string, baseRel: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const abs = path.join(dir, e.name);
+    const rel = path.posix.join(baseRel, e.name);
+    if (e.isDirectory()) {
+      out.push(...(await listFilesRecursive(abs, rel)));
+    } else if (e.isFile()) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/**
+ * Snapshot selected files into `.ai2live/snapshots/<revId>/...` for later checkout.
+ * Also accepts directories (copies files recursively).
+ */
+export async function snapshotWorkspaceFiles(
+  projectRoot: string,
+  revId: string,
+  relativePaths: string[],
+  opts?: { root?: "ai2live" | "legacy" }
+): Promise<Record<string, string>> {
+  const mapping: Record<string, string> = {};
+  const snapBase =
+    opts?.root === "legacy"
+      ? path.posix.join(LEGACY_SNAPSHOT_ROOT, revId)
+      : path.posix.join(SNAPSHOT_ROOT, revId);
+
+  for (const relRaw of relativePaths) {
+    const rel = relRaw.replace(/\\/g, "/").replace(/\/+$/, "");
+    const src = path.join(projectRoot, rel);
+    let st;
+    try {
+      st = await stat(src);
+    } catch {
+      continue;
+    }
+    if (st.isFile()) {
+      const snapRel = path.posix.join(snapBase, rel);
+      const dest = path.join(projectRoot, snapRel);
+      if (await copyFileSafe(src, dest)) mapping[rel] = snapRel;
+    } else if (st.isDirectory()) {
+      const files = await listFilesRecursive(src, rel);
+      for (const fileRel of files) {
+        const snapRel = path.posix.join(snapBase, fileRel);
+        const dest = path.join(projectRoot, snapRel);
+        if (await copyFileSafe(path.join(projectRoot, fileRel), dest)) {
+          mapping[fileRel] = snapRel;
+        }
+      }
+    }
+  }
+  return mapping;
+}
+
+/** Snapshot spec/, layers/, validation/report.json under `.ai2live/snapshots/<rev>/`. */
+export async function snapshotImportantWorkspace(
+  projectRoot: string,
+  revId: string
+): Promise<Record<string, string>> {
+  return snapshotWorkspaceFiles(projectRoot, revId, [...IMPORTANT_SNAPSHOT_GLOBS]);
+}
+
+/**
+ * Append a revision and optionally snapshot important workspace files.
+ */
+export async function appendImportantRevision(
+  projectRoot: string,
+  input: {
+    expected_head: string | null;
+    action: HistoryAction;
+    target?: string;
+    payload?: Record<string, unknown>;
+    asset_hashes?: Record<string, string>;
+    message?: string;
+    seed?: string;
+    snapshot?: boolean;
+  },
+  opts?: { historyPath?: string }
+): Promise<{ store: HistoryStore; node: RevisionNode }> {
+  const store = await loadHistoryStore(projectRoot, opts?.historyPath);
+  const node = store.append({
+    expected_head: input.expected_head,
+    action: input.action,
+    target: input.target,
+    payload: input.payload,
+    asset_hashes: input.asset_hashes,
+    message: input.message,
+    seed: input.seed,
+  });
+  if (input.snapshot !== false) {
+    const snaps = await snapshotImportantWorkspace(projectRoot, node.id);
+    if (Object.keys(snaps).length) {
+      node.workspace_files = snaps;
+    }
+  }
+  await saveHistoryStore(projectRoot, store, opts?.historyPath);
+  return { store, node };
+}
+
 /**
  * Checkout revision in-memory and restore any workspace_files snapshots
- * stored under validation/revisions/<revId>/...
+ * (`.ai2live/snapshots/<rev>/...` or legacy `validation/revisions/<rev>/...`).
  */
 export async function checkoutRevision(
   projectRoot: string,
@@ -166,45 +292,31 @@ export async function checkoutRevision(
   const node = store.checkout(revId);
   const restored: string[] = [];
 
-  if (opts?.restoreWorkspace !== false && node.workspace_files) {
-    for (const [rel, snapRel] of Object.entries(node.workspace_files)) {
-      const src = path.join(projectRoot, snapRel);
-      const dest = path.join(projectRoot, rel);
-      try {
-        await access(src);
-        await mkdir(path.dirname(dest), { recursive: true });
-        await copyFile(src, dest);
-        restored.push(rel);
-      } catch {
-        /* skip missing snapshot */
+  if (opts?.restoreWorkspace !== false) {
+    const mapping = { ...(node.workspace_files ?? {}) };
+
+    // If node lacks mapping, try discovering under preferred + legacy roots
+    if (Object.keys(mapping).length === 0) {
+      for (const rootRel of [
+        path.posix.join(SNAPSHOT_ROOT, revId),
+        path.posix.join(LEGACY_SNAPSHOT_ROOT, revId),
+      ]) {
+        const absRoot = path.join(projectRoot, rootRel);
+        const files = await listFilesRecursive(absRoot, "");
+        for (const f of files) {
+          mapping[f] = path.posix.join(rootRel, f);
+        }
+        if (files.length) break;
       }
     }
+
+    for (const [rel, snapRel] of Object.entries(mapping)) {
+      const src = path.join(projectRoot, snapRel);
+      const dest = path.join(projectRoot, rel);
+      if (await copyFileSafe(src, dest)) restored.push(rel);
+    }
   }
 
-  // Record checkout as a new tip note? DESIGN wants HEAD move; we move head without append.
   await saveHistoryStore(projectRoot, store, opts?.historyPath);
   return { store, node, restored };
-}
-
-/** Snapshot selected files into validation/revisions/<revId>/ for later checkout. */
-export async function snapshotWorkspaceFiles(
-  projectRoot: string,
-  revId: string,
-  relativePaths: string[]
-): Promise<Record<string, string>> {
-  const mapping: Record<string, string> = {};
-  for (const rel of relativePaths) {
-    const src = path.join(projectRoot, rel);
-    try {
-      await access(src);
-    } catch {
-      continue;
-    }
-    const snapRel = path.posix.join("validation", "revisions", revId, rel);
-    const dest = path.join(projectRoot, snapRel);
-    await mkdir(path.dirname(dest), { recursive: true });
-    await copyFile(src, dest);
-    mapping[rel] = snapRel;
-  }
-  return mapping;
 }
