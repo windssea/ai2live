@@ -45,7 +45,7 @@ pnpm validate:example
 ### 4. Milestone tool commands
 
 ```bash
-ai2live segment <project>       # M1 see-through / stub masks
+ai2live segment <project> [--feather N] [--split-bilateral] [--debug]  # M1 see-through + QC
 ai2live occlusion <project>     # M2 occlusion completion stubs
 ai2live expressions <project>   # M3 expression differentials
 ai2live repair <project>        # M4 pose grid + diagnosis
@@ -99,10 +99,39 @@ pnpm --filter @ai2live/mcp-server exec node dist/index.js
 
 Send newline-delimited JSON-RPC (`initialize`, `tools/list`, `tools/call`).
 
+
+### 8. Doctor (env / provider / worker)
+
+```bash
+ai2live doctor
+ai2live doctor --json
+```
+
+Checks whether API keys are **set** (never prints values), whether the active provider looks configured, and whether `AI2LIVE_IMAGE_WORKER_URL` `/health` is reachable. See `.env.example`.
+
+### 9. Segmentation options
+
+```bash
+ai2live segment <project> --feather 2 --split-bilateral --debug
+# writes masks/, masks/segmentation_report.json (incl. coverage QC),
+# and previews/seg_debug.png when --debug
+```
+
+### 10. Studio (local web UI)
+
+```bash
+pnpm -r build
+pnpm --filter @ai2live/studio dev
+# UI http://127.0.0.1:5173  — open examples/simple-character, run compile/validate/segment
+```
+
+Prefs: `localStorage` + `<project>/.ai2live-studio.json` (provider + dry-run).
+
 ### CLI surface
 
 ```text
 ai2live compile|validate|segment|occlusion|expressions|repair|downstream|unattended <project>
+ai2live doctor [--json]
 ai2live providers
 ai2live agent plan|diagnose|repair <project> [--provider grok|openai|codex]
 ai2live image edit --prompt … --input … [--out …] [--provider grok|openai] [--project …]
