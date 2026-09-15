@@ -21,9 +21,20 @@ describe("mcp tools", () => {
     }
   });
 
-  it("lists expected tools", () => {
+  it("lists DESIGN §8-oriented tools", () => {
     const names = TOOLS.map((t) => t.name).sort();
-    expect(names).toEqual(["agent_plan", "compile", "providers", "validate"]);
+    expect(names).toEqual(
+      [
+        "agent_plan",
+        "compile",
+        "compose",
+        "downstream",
+        "inspect",
+        "providers",
+        "revision",
+        "validate",
+      ].sort()
+    );
   });
 
   it("providers tool returns JSON", async () => {
@@ -32,5 +43,16 @@ describe("mcp tools", () => {
     const data = JSON.parse(r.content[0]!.text);
     expect(data.active).toBeTruthy();
     expect(Array.isArray(data.providers)).toBe(true);
+  });
+
+  it("revision list works on empty history", async () => {
+    const r = await callTool("revision", {
+      projectDir: "/tmp",
+      action: "list",
+    });
+    expect(r.isError).toBeFalsy();
+    const data = JSON.parse(r.content[0]!.text);
+    expect(data).toHaveProperty("head");
+    expect(Array.isArray(data.nodes)).toBe(true);
   });
 });

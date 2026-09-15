@@ -93,9 +93,15 @@ importers:
       '@ai2live/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@ai2live/autolive2d-adapter':
+        specifier: workspace:*
+        version: link:../../packages/autolive2d-adapter
       '@ai2live/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@ai2live/history':
+        specifier: workspace:*
+        version: link:../../packages/history
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../../packages/manifest-schema
@@ -105,6 +111,9 @@ importers:
       '@ai2live/psd-compiler':
         specifier: workspace:*
         version: link:../../packages/psd-compiler
+      '@ai2live/psd2live-adapter':
+        specifier: workspace:*
+        version: link:../../packages/psd2live-adapter
       '@ai2live/qc-engine':
         specifier: workspace:*
         version: link:../../packages/qc-engine

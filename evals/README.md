@@ -1,3 +1,8 @@
 # Evals
 
-Synthetic clean / hair stress / occlusion stress / flat-image sets — populate in M1–M6.
+| Set | Status | Entry |
+|-----|--------|-------|
+| Synthetic Clean | smoke | `node evals/run-smoke.mjs` (example compile) |
+| Hair Stress | synthetic fixture | `node evals/run-hair-stress.mjs` |
+| Occlusion Stress | placeholder | — |
+| Flat Image | placeholder | — |

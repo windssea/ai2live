@@ -9,10 +9,12 @@ export interface StaticQcOptions {
   projectRoot: string;
   manifestPath?: string;
   masterPath?: string;
-  /** Max allowed mean absolute error on RGB where alpha>0 (0-255 scale). Default 8 */
+  /** Max allowed mean absolute error on RGB where alpha>0 (0-255 scale). Default 6 (tightened Gate 3) */
   maeThreshold?: number;
-  /** Max MSE. Default 200 */
+  /** Max MSE. Default 150 (tightened Gate 3) */
   mseThreshold?: number;
+  /** When false, skip Gates 0–5 suite (default true). */
+  runGates?: boolean;
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -28,8 +30,8 @@ export async function runStaticQc(options: StaticQcOptions): Promise<ValidationR
   const projectRoot = path.resolve(options.projectRoot);
   const manifestPath =
     options.manifestPath ?? path.join(projectRoot, "spec", "layer_manifest.json");
-  const maeThreshold = options.maeThreshold ?? 8;
-  const mseThreshold = options.mseThreshold ?? 200;
+  const maeThreshold = options.maeThreshold ?? 6;
+  const mseThreshold = options.mseThreshold ?? 150;
 
   const raw = JSON.parse(await readFile(manifestPath, "utf8"));
   const manifest = assertLayerManifest(raw) as LayerManifest;
@@ -198,6 +200,45 @@ export async function runStaticQc(options: StaticQcOptions): Promise<ValidationR
       }
     } catch {
       /* ignore malformed roundtrip report */
+    }
+  }
+
+  // Gates 0–5 suite (Gate 3 metrics from this composite pass)
+  if (options.runGates !== false) {
+    try {
+      const { runQualityGates } = await import("./gates.js");
+      const gatesReport = await runQualityGates({
+        projectRoot,
+        manifest,
+        masterPath,
+        gate3: {
+          mae: metrics.mae,
+          mse: metrics.mse,
+          passed: !findings.some(
+            (f) => f.type === "COMPOSITE_MISMATCH" && f.severity === "ERROR"
+          ),
+          findings: findings.filter(
+            (f) => f.type === "COMPOSITE_MISMATCH" || f.type === "COMPOSITE_OK"
+          ),
+        },
+      });
+      metrics.gates_passed = gatesReport.passed ? 1 : 0;
+      for (const [k, v] of Object.entries(gatesReport.metrics)) {
+        if (!(k in metrics)) metrics[k] = v;
+      }
+      for (const f of gatesReport.findings) {
+        if (!findings.some((x) => x.id === f.id)) findings.push(f);
+      }
+      const gatesPath = path.join(projectRoot, "validation", "quality_gates.json");
+      await mkdir(path.dirname(gatesPath), { recursive: true });
+      await writeFile(gatesPath, JSON.stringify(gatesReport, null, 2));
+    } catch (err) {
+      findings.push({
+        id: createStableId("finding", "gates-error"),
+        severity: "WARNING",
+        type: "GATES_SUITE_ERROR",
+        message: `Quality gates suite error: ${(err as Error).message}`,
+      });
     }
   }
 

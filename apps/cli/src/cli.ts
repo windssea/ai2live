@@ -7,7 +7,11 @@ import { runStaticQc } from "@ai2live/qc-engine";
 import { buildAutoLive2dPackage } from "@ai2live/autolive2d-adapter";
 import { buildPsd2LivePackage, writePsd2LiveDeepSession } from "@ai2live/psd2live-adapter";
 import { validateLayerManifest, validateCharacter } from "@ai2live/manifest-schema";
-import { HistoryStore } from "@ai2live/history";
+import {
+  HistoryStore,
+  loadHistoryStore,
+  checkoutRevision,
+} from "@ai2live/history";
 import { seeThroughFromMaster } from "@ai2live/segmentation";
 import { completeOcclusionScenarios } from "@ai2live/occlusion";
 import { generateExpressionDifferentials } from "@ai2live/expression";
@@ -579,6 +583,61 @@ image
       }
     }
   );
+
+
+
+const revision = program.command("revision").description("History revision list / checkout / resume");
+
+revision
+  .command("list")
+  .description("List revisions from validation/history.json")
+  .argument("<projectDir>", "Project directory")
+  .action(async (projectDir: string) => {
+    const root = path.resolve(projectDir);
+    const store = await loadHistoryStore(root);
+    const nodes = store.getNodes();
+    console.log(`head=${store.getHead() ?? "(none)"} count=${nodes.length}`);
+    for (const n of nodes) {
+      const mark = n.id === store.getHead() ? "*" : " ";
+      console.log(`${mark} ${n.id}  ${n.action}  ${n.created_at}  ${n.message ?? ""}`);
+    }
+  });
+
+revision
+  .command("checkout")
+  .description("Move HEAD to rev and restore workspace snapshots when present")
+  .argument("<projectDir>", "Project directory")
+  .argument("<rev>", "Revision id")
+  .action(async (projectDir: string, rev: string) => {
+    const root = path.resolve(projectDir);
+    try {
+      const { node, restored, store } = await checkoutRevision(root, rev);
+      console.log(`checked out ${node.id} action=${node.action}`);
+      console.log(`head=${store.getHead()}`);
+      if (restored.length) console.log(`restored: ${restored.join(", ")}`);
+      else console.log("no workspace snapshots restored (HEAD moved only)");
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
+revision
+  .command("resume")
+  .description("Alias of checkout — resume from a prior revision")
+  .argument("<projectDir>", "Project directory")
+  .argument("<rev>", "Revision id")
+  .action(async (projectDir: string, rev: string) => {
+    const root = path.resolve(projectDir);
+    try {
+      const { node, restored, store } = await checkoutRevision(root, rev);
+      console.log(`resumed ${node.id}`);
+      console.log(`head=${store.getHead()} restored=${restored.length}`);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
+  });
 
 
 async function main(): Promise<void> {

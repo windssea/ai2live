@@ -30,3 +30,10 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 ## M6 — Unattended Product
 
 `ai2live unattended` / `ai2live run`: budget/retry/handoff + pipeline; `--apply-repair` closes the repair loop when requested.
+
+## Quality gates / MCP / history / evals (Batch 2)
+
+- Gates 0–5 scaffolding with real Gate 2 visible-pixel fidelity + Gate 4 overlap heuristic; Gate 3 thresholds tightened; report in `validation/quality_gates.json`
+- MCP tools: `inspect`, `compose`, `validate`, `downstream`, `revision` (+ legacy compile/providers/agent_plan)
+- `ai2live revision list|checkout|resume` + HistoryStore.checkout
+- Eval: `evals/hair-stress` + `evals/run-hair-stress.mjs` pass-rate report

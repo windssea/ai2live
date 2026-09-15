@@ -34,3 +34,10 @@ examples/**/previews/seg_debug.png
 # pipeline first-class PSD exports
 exports/
 examples/**/exports/
+
+# eval generated reports
+evals/**/validation/
+evals/**/psd/
+evals/**/previews/
+evals/**/layers/completions/
+evals/**/assets/
