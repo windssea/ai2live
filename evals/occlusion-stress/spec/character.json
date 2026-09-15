@@ -1,0 +1,11 @@
+{
+  "id": "char_occlusion_stress",
+  "name": "Occlusion Stress",
+  "version": "0.1",
+  "description": "Synthetic occlusion stress fixture",
+  "art_style": "flat anime blocks",
+  "canvas": {
+    "width": 128,
+    "height": 160
+  }
+}
