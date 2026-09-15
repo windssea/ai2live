@@ -22,3 +22,10 @@ Master bindability → layer plan → visible fidelity → **composite fidelity*
 
 - **AutoLive2d**: Apache-2.0 friendly adapter for fast validation.
 - **psd2live**: GPL — call out-of-process only; never copy into this repo.
+
+
+## Batch 5 additions
+
+- **State machine (§17):** `@ai2live/state-machine` → `.ai2live/state.json`; `ai2live status`
+- **Snapshots:** `.ai2live/snapshots/<rev>/` restored by `ai2live revision checkout`
+- **Dual-judge (§16):** `@ai2live/vision-review` — VALIDATED iff CV∧VLM; dry-run VLM is MOCK_PASS

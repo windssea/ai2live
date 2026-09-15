@@ -10,6 +10,7 @@ import type { LayerManifest } from "@ai2live/domain";
 import {
   loadHistoryStore,
   saveHistoryStore,
+  snapshotImportantWorkspace,
 } from "@ai2live/history";
 
 export interface ReplaceLayerResult {
@@ -104,6 +105,12 @@ export async function replaceLayerPng(opts: {
       },
       seed: `replace-${opts.layerId}-${hash.slice(0, 12)}`,
     });
+    try {
+      const snaps = await snapshotImportantWorkspace(root, node.id);
+      if (Object.keys(snaps).length) node.workspace_files = snaps;
+    } catch {
+      /* snapshot best-effort */
+    }
     head = node.id;
     await saveHistoryStore(root, history);
   } catch {

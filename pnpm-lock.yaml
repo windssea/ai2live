@@ -80,6 +80,12 @@ importers:
       '@ai2live/segmentation':
         specifier: workspace:*
         version: link:../../packages/segmentation
+      '@ai2live/state-machine':
+        specifier: workspace:*
+        version: link:../../packages/state-machine
+      '@ai2live/vision-review':
+        specifier: workspace:*
+        version: link:../../packages/vision-review
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -400,6 +406,9 @@ importers:
       '@ai2live/expression':
         specifier: workspace:*
         version: link:../expression
+      '@ai2live/history':
+        specifier: workspace:*
+        version: link:../history
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../manifest-schema
@@ -427,6 +436,9 @@ importers:
       '@ai2live/segmentation':
         specifier: workspace:*
         version: link:../segmentation
+      '@ai2live/state-machine':
+        specifier: workspace:*
+        version: link:../state-machine
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -524,6 +536,9 @@ importers:
       '@ai2live/psd-compiler':
         specifier: workspace:*
         version: link:../psd-compiler
+      '@ai2live/vision-review':
+        specifier: workspace:*
+        version: link:../vision-review
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -549,6 +564,9 @@ importers:
       '@ai2live/qc-engine':
         specifier: workspace:*
         version: link:../qc-engine
+      '@ai2live/vision-review':
+        specifier: workspace:*
+        version: link:../vision-review
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -574,6 +592,34 @@ importers:
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/state-machine:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
+  packages/vision-review:
+    dependencies:
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../model-providers
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

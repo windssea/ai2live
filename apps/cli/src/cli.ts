@@ -11,7 +11,14 @@ import {
   HistoryStore,
   loadHistoryStore,
   checkoutRevision,
+  appendImportantRevision,
 } from "@ai2live/history";
+import {
+  loadProjectState,
+  formatStatus,
+  advanceProjectState,
+  type ProjectState,
+} from "@ai2live/state-machine";
 import { seeThroughFromMaster } from "@ai2live/segmentation";
 import { completeOcclusionScenarios } from "@ai2live/occlusion";
 import { generateExpressionDifferentials } from "@ai2live/expression";
@@ -96,7 +103,8 @@ program
   .command("validate")
   .description("Validate schemas + run static QC on a project")
   .argument("<projectDir>", "Project directory")
-  .action(async (projectDir: string) => {
+  .option("--vision-review", "DESIGN §16 dual-judge: CV + optional VLM (dry-run mock by default)")
+  .action(async (projectDir: string, opts: { visionReview?: boolean }) => {
     const root = path.resolve(projectDir);
     const charPath = path.join(root, "spec", "character.json");
     const manPath = path.join(root, "spec", "layer_manifest.json");
@@ -119,7 +127,10 @@ program
       return;
     }
 
-    const report = await runStaticQc({ projectRoot: root });
+    const report = await runStaticQc({
+      projectRoot: root,
+      visionReview: Boolean(opts.visionReview),
+    });
     console.log(`Static QC passed=${report.passed}`);
     console.log(JSON.stringify(report.metrics, null, 2));
     for (const f of report.findings) {
@@ -184,11 +195,15 @@ program
   .description("M4: pose grid + diagnosis + repair plan stub")
   .argument("<projectDir>")
   .option("--loop", "Run repair loop stub")
-  .action(async (projectDir: string, opts: { loop?: boolean }) => {
+  .option("--vision-review", "DESIGN §16 dual-judge on pose QA")
+  .action(async (projectDir: string, opts: { loop?: boolean; visionReview?: boolean }) => {
     const root = path.resolve(projectDir);
     const grid = await renderPoseGridStub({ projectRoot: root });
     console.log(`pose shots=${grid.shots.length}`);
-    const diag = await diagnosePoseGrid({ projectRoot: root });
+    const diag = await diagnosePoseGrid({
+      projectRoot: root,
+      visionReview: Boolean(opts.visionReview),
+    });
     console.log(`findings=${diag.findings.length} repairs=${diag.recommended_repairs.length}`);
     if (opts.loop) {
       const loop = await runRepairLoopStub({ projectRoot: root });
@@ -596,6 +611,33 @@ image
     }
   );
 
+
+
+
+program
+  .command("status")
+  .description("Show project state machine status (.ai2live/state.json)")
+  .argument("<projectDir>", "Project directory")
+  .option("--set <state>", "Force-advance to a legal state (for recovery)")
+  .action(async (projectDir: string, opts: { set?: string }) => {
+    const root = path.resolve(projectDir);
+    try {
+      if (opts.set) {
+        const rec = await advanceProjectState(root, opts.set as ProjectState, {
+          reason: "cli status --set",
+        });
+        console.log(formatStatus(rec));
+        console.log(`path=${path.join(root, ".ai2live", "state.json")}`);
+        return;
+      }
+      const rec = await loadProjectState(root);
+      console.log(formatStatus(rec));
+      console.log(`path=${path.join(root, ".ai2live", "state.json")}`);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
+  });
 
 
 const revision = program.command("revision").description("History revision list / checkout / resume");

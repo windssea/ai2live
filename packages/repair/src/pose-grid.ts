@@ -171,6 +171,9 @@ export interface DiagnosisResult {
 /** Heuristic diagnosis from pose-grid contract metadata. */
 export async function diagnosePoseGrid(opts: {
   projectRoot: string;
+  /** Optional DESIGN §16 dual-judge with VLM review. */
+  visionReview?: boolean;
+  visionReviewDryRun?: boolean;
 }): Promise<DiagnosisResult> {
   const root = path.resolve(opts.projectRoot);
   const gridDir = path.join(root, "validation", "pose_grid");
@@ -238,6 +241,47 @@ export async function diagnosePoseGrid(opts: {
       2
     )
   );
+
+  if (opts.visionReview) {
+    try {
+      const { runDualJudge } = await import("@ai2live/vision-review");
+      const dual = await runDualJudge({
+        projectRoot: root,
+        poseFindings: findings,
+        dryRun: opts.visionReviewDryRun !== false,
+        context: `pose_qa findings=${findings.length}`,
+      });
+      findings.push({
+        id: createStableId("finding", "pose-dual-judge"),
+        severity: dual.validated ? "INFO" : "WARNING",
+        type: dual.validated ? "DUAL_JUDGE_VALIDATED" : "DUAL_JUDGE_NOT_VALIDATED",
+        message: `Pose dual-judge outcome=${dual.outcome} validated=${dual.validated}`,
+      });
+      (report as { dual_judge?: unknown }).dual_judge = dual;
+      await writeFile(
+        path.join(root, "validation", "pose_qa_findings.json"),
+        JSON.stringify(
+          {
+            version: "0.1",
+            findings,
+            recommended_repairs,
+            dual_judge: dual,
+            note: "Pose QA + optional dual-judge vision review",
+          },
+          null,
+          2
+        )
+      );
+    } catch (err) {
+      findings.push({
+        id: createStableId("finding", "pose-dual-err"),
+        severity: "WARNING",
+        type: "DUAL_JUDGE_ERROR",
+        message: `Pose dual-judge error: ${(err as Error).message}`,
+      });
+    }
+  }
+
   return report;
 }
 

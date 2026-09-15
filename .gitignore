@@ -49,3 +49,7 @@ evals/**/assets/
 # eval aggregate + generated flat images
 evals/last-report.json
 evals/flat-image/images/
+
+# project runtime state / snapshots
+**/.ai2live/
+

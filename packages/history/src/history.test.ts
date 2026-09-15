@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, writeFile, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, readFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -9,6 +9,9 @@ import {
   saveHistoryStore,
   checkoutRevision,
   snapshotWorkspaceFiles,
+  snapshotImportantWorkspace,
+  appendImportantRevision,
+  SNAPSHOT_ROOT,
 } from "./index.js";
 
 describe("HistoryStore", () => {
@@ -59,13 +62,12 @@ describe("history persistence + checkout", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("save/load + checkout restores workspace snapshot", async () => {
+  it("save/load + checkout restores workspace snapshot (legacy path)", async () => {
     await mkdir(path.join(dir, "layers"), { recursive: true });
     await writeFile(path.join(dir, "layers/face.png"), Buffer.from("v1"));
     const store = new HistoryStore();
     const a = store.append({ expected_head: null, action: "create_project", seed: "a" });
-    const snaps = await snapshotWorkspaceFiles(dir, a.id, ["layers/face.png"]);
-    // mutate node with workspace_files via re-append pattern: patch JSON
+    const snaps = await snapshotWorkspaceFiles(dir, a.id, ["layers/face.png"], { root: "legacy" });
     const data = store.toJSON();
     data.nodes[0]!.workspace_files = snaps;
     const store2 = HistoryStore.fromJSON(data);
@@ -79,5 +81,43 @@ describe("history persistence + checkout", () => {
 
     const reloaded = await loadHistoryStore(dir);
     expect(reloaded.getHead()).toBe(a.id);
+  });
+
+  it("appendImportantRevision snapshots under .ai2live/snapshots/<rev>/", async () => {
+    await mkdir(path.join(dir, "spec"), { recursive: true });
+    await mkdir(path.join(dir, "layers"), { recursive: true });
+    await mkdir(path.join(dir, "validation"), { recursive: true });
+    await writeFile(path.join(dir, "spec/character.json"), '{"id":"c1"}');
+    await writeFile(path.join(dir, "layers/face.png"), Buffer.from("face-v1"));
+    await writeFile(path.join(dir, "validation/report.json"), '{"passed":true}');
+
+    const { node } = await appendImportantRevision(dir, {
+      expected_head: null,
+      action: "validate",
+      message: "qc ok",
+      seed: "imp-a",
+      snapshot: true,
+    });
+
+    expect(node.workspace_files).toBeTruthy();
+    const snapFace = path.join(dir, SNAPSHOT_ROOT, node.id, "layers/face.png");
+    await access(snapFace);
+    const snapSpec = path.join(dir, SNAPSHOT_ROOT, node.id, "spec/character.json");
+    await access(snapSpec);
+
+    await writeFile(path.join(dir, "layers/face.png"), Buffer.from("face-v2"));
+    await writeFile(path.join(dir, "spec/character.json"), '{"id":"c2"}');
+
+    const { restored } = await checkoutRevision(dir, node.id);
+    expect(restored.length).toBeGreaterThanOrEqual(2);
+    expect(await readFile(path.join(dir, "layers/face.png"), "utf8")).toBe("face-v1");
+    expect(await readFile(path.join(dir, "spec/character.json"), "utf8")).toBe('{"id":"c1"}');
+  });
+
+  it("snapshotImportantWorkspace copies key dirs", async () => {
+    await mkdir(path.join(dir, "spec"), { recursive: true });
+    await writeFile(path.join(dir, "spec/a.json"), "{}");
+    const map = await snapshotImportantWorkspace(dir, "rev_test");
+    expect(Object.keys(map).some((k) => k.startsWith("spec/"))).toBe(true);
   });
 });

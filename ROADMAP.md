@@ -25,6 +25,7 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 
 `ai2live repair` / `ai2live agent repair --apply`: pose grid stubs, LLM plan, **real apply** of ≥1 deterministic action (occlusion / feather / recompile) + re-QC → `validation/repair_result.json` + history revisions.
 **Progress (batch3):** Pose QA writes **parameter-contract screenshots** (annotated composites) + `pose_qa_findings.json` when no live renderer.
+**Progress (batch5):** Optional `--vision-review` dual-judge (CV + VLM dry-run mock) on pose QA / static QC.
 
 ## M5 — psd2live Deep Integration
 
@@ -35,6 +36,7 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 
 `ai2live unattended` / `ai2live run`: budget/retry/handoff + pipeline; `--apply-repair` closes the repair loop when requested.
 **Progress (batch4):** `pipeline_report.json` includes `provider`, `completion_method_histogram`, `asset_sha256_count`, `package_version` from root `package.json`.
+**Progress (batch5):** Pipeline advances `@ai2live/state-machine` → `.ai2live/state.json`; `ai2live status <project>`.
 
 ## Quality gates / MCP / history / evals
 
@@ -54,5 +56,15 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 - **Downstream provenance:** richer `invoke_log.json` + safe check when env CMD set
 - **Pipeline report:** provider, completion_method histogram, asset sha256 counts, package version
 
-## Remaining (post-batch4)
-- Stronger CV segmentation; full Poisson/inpaint quality; VLM Gate 0; live Cubism pose renders; real AutoLive2d/psd2live import when binaries present
+### Batch 5
+- **Hair-stress ≥90%:** fixture enriched with EYE/MOUTH/ARM bilateral layers (no Gate threshold cheats); Gate 1 completeness + static QC
+- **State machine (DESIGN §17):** `@ai2live/state-machine` + `.ai2live/state.json` + pipeline advance + `ai2live status`
+- **Workspace snapshots:** `.ai2live/snapshots/<rev>/` for `spec/`, `layers/`, `validation/report.json`; `revision checkout` restores
+- **Dual-judge skeleton (DESIGN §16):** `@ai2live/vision-review` — CV+VLM merge; dry-run VLM = MOCK_PASS; VALIDATED only if both pass; `--vision-review` on validate/repair/pipeline
+
+## Remaining (honest PARTIAL)
+- Live VLM Gate 0 / vision review (dry-run mock only unless credentials + `--vision-review` with `dryRun:false`)
+- Stronger CV segmentation; full Poisson/inpaint quality
+- Live Cubism pose renders (still parameter-contract composites)
+- Real AutoLive2d/psd2live import when binaries present
+- State machine does not yet drive branching UI / human handoff automation beyond persistence + CLI

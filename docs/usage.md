@@ -156,3 +156,9 @@ ai2live eval [--suite all|hair-stress|occlusion-stress|flat-image]
 ai2live layer replace <project> <layerId> --png <path>
 ```
 
+
+## Batch 5 CLI
+
+- `ai2live status <project>` — project state machine
+- `ai2live validate|repair --vision-review` — dual-judge (VLM dry-run mock by default)
+- Revision snapshots under `.ai2live/snapshots/<rev>/`
