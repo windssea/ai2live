@@ -12,9 +12,7 @@ import { seeThroughFromMaster } from "@ai2live/segmentation";
 import { completeOcclusionScenarios } from "@ai2live/occlusion";
 import { generateExpressionDifferentials } from "@ai2live/expression";
 import { renderPoseGridStub, diagnosePoseGrid, runRepairLoopStub } from "@ai2live/repair";
-import { createBudget, writeHandoff, DEFAULT_RETRY } from "@ai2live/product";
 import {
-  defaultUnattendedPlan,
   createAgentContext,
   runPlannerChat,
   runDiagnoseChat,
@@ -28,6 +26,7 @@ import {
   type ProviderId,
 } from "@ai2live/model-providers";
 import { editImageViaProvider } from "@ai2live/image-client";
+import { runFullPipeline, type StepId } from "@ai2live/pipeline";
 
 const program = new Command();
 program.name("ai2live").description("AI Live2D Asset Compiler CLI").version("0.1.0");
@@ -208,61 +207,118 @@ program
     }
   });
 
+function attachRunFlags(cmd: Command) {
+  return cmd
+    .option("--provider <id>", "grok | openai | codex")
+    .option("--dry-run", "Force AI2LIVE_MODEL_DRY_RUN=1 (LLM stubs)")
+    .option("--from-image <path>", "Bootstrap project from a single character design PNG")
+    .option("--name <name>", "Character name when using --from-image")
+    .option("--skip-segment", "Skip see-through segmentation")
+    .option("--skip-repair", "Skip agent repair step")
+    .option("--skip-occlusion", "Skip occlusion completion")
+    .option("--skip-expressions", "Skip expression differentials")
+    .option("--skip-downstream", "Skip AutoLive2d / psd2live packages")
+    .option("--always-repair", "Run agent repair even when QC passed")
+    .option("--json-events", "Emit NDJSON PipelineEvents to stdout (for Studio)")
+    .option("--feather <px>", "Segment feather radius", (v) => Number(v), 2)
+    .option("--no-split-bilateral", "Disable bilateral eye/arm split");
+}
+
+async function executeRun(
+  projectDir: string,
+  opts: {
+    provider?: string;
+    dryRun?: boolean;
+    fromImage?: string;
+    name?: string;
+    skipSegment?: boolean;
+    skipRepair?: boolean;
+    skipOcclusion?: boolean;
+    skipExpressions?: boolean;
+    skipDownstream?: boolean;
+    alwaysRepair?: boolean;
+    jsonEvents?: boolean;
+    feather?: number;
+    splitBilateral?: boolean;
+  }
+) {
+  const root = path.resolve(projectDir);
+  const skip: Partial<Record<StepId, boolean>> = {};
+  if (opts.skipSegment) skip.segment = true;
+  if (opts.skipRepair) skip.repair = true;
+  if (opts.skipOcclusion) skip.occlusion = true;
+  if (opts.skipExpressions) skip.expressions = true;
+  if (opts.skipDownstream) skip.downstream = true;
+
+  const jsonEvents = Boolean(opts.jsonEvents);
+  const result = await runFullPipeline({
+    projectRoot: root,
+    provider: opts.provider as "grok" | "openai" | "codex" | undefined,
+    dryRun: Boolean(opts.dryRun),
+    fromImage: opts.fromImage ? path.resolve(opts.fromImage) : undefined,
+    characterName: opts.name,
+    skip,
+    alwaysRepair: Boolean(opts.alwaysRepair),
+    feather: opts.feather,
+    splitBilateral: opts.splitBilateral,
+    onEvent: (e) => {
+      if (jsonEvents) {
+        process.stdout.write(JSON.stringify(e) + "\n");
+      } else if (e.type === "step_start") {
+        console.error(`→ ${e.step}: ${e.message ?? ""}`);
+      } else if (e.type === "step_end") {
+        console.error(`✓ ${e.step}: ${e.message ?? ""}`);
+      } else if (e.type === "log") {
+        console.error(e.message ?? "");
+      } else if (e.type === "error") {
+        console.error(`✗ ${e.step ?? ""}: ${e.message ?? ""}`);
+      }
+    },
+  });
+
+  if (!jsonEvents) {
+    console.log(`pipeline report: ${result.reportPath}`);
+    console.log(`passed=${result.passed} provider=${result.provider} dryRun=${result.dryRun}`);
+    if (result.artifacts.psd) console.log(`psd: ${result.artifacts.psd}`);
+    if (result.artifacts.autolive2d) console.log(`autolive2d: ${result.artifacts.autolive2d}`);
+    if (result.artifacts.psd2liveDeep) console.log(`psd2live: ${result.artifacts.psd2liveDeep}`);
+  }
+  if (!result.passed) process.exitCode = 1;
+}
+
+attachRunFlags(
+  program
+    .command("run")
+    .description("One-shot full pipeline (统一控制台): doctor→segment→…→PSD→QC→adapters")
+    .argument("<projectDir>", "Project directory (created/used with --from-image)")
+).action(async (projectDir: string, opts) => {
+  await executeRun(projectDir, opts);
+});
+
+attachRunFlags(
+  program
+    .command("pipeline")
+    .description("Alias for `ai2live run`")
+    .argument("<projectDir>", "Project directory")
+).action(async (projectDir: string, opts) => {
+  await executeRun(projectDir, opts);
+});
+
 program
   .command("unattended")
-  .description("M6: run default unattended plan (deterministic tools only)")
+  .description("Deprecated alias for `ai2live run` (same orchestrator)")
   .argument("<projectDir>")
-  .action(async (projectDir: string) => {
-    const root = path.resolve(projectDir);
-    const ctx = createAgentContext(root);
-    const plan = defaultUnattendedPlan();
-    console.log(`budget max_usd=${ctx.budget.max_usd} retry=${DEFAULT_RETRY.max_attempts}`);
-    console.log(`plan steps=${plan.length} provider=${ctx.provider.id}`);
-
-    await seeThroughFromMaster({ projectRoot: root });
-    await completeOcclusionScenarios({ projectRoot: root });
-    await generateExpressionDifferentials({ projectRoot: root });
-    const compiled = await compilePsd({ projectRoot: root });
-    const qc = await runStaticQc({ projectRoot: root });
-    await renderPoseGridStub({ projectRoot: root });
-    await diagnosePoseGrid({ projectRoot: root });
-    await buildAutoLive2dPackage({
-      projectRoot: root,
-      psdPath: compiled.psdPath,
-      importManifestPath: compiled.importManifestPath,
+  .option("--provider <id>", "grok | openai | codex")
+  .option("--dry-run", "Force dry-run")
+  .option("--json-events", "NDJSON events")
+  .action(async (projectDir: string, opts: { provider?: string; dryRun?: boolean; jsonEvents?: boolean }) => {
+    console.error("note: `unattended` now wraps `ai2live run` — prefer `ai2live run`");
+    await executeRun(projectDir, {
+      provider: opts.provider,
+      dryRun: opts.dryRun,
+      jsonEvents: opts.jsonEvents,
+      skipRepair: true,
     });
-    await writePsd2LiveDeepSession({
-      projectRoot: root,
-      psdPath: compiled.psdPath,
-      importManifestPath: compiled.importManifestPath,
-    });
-
-    await mkdir(path.join(root, "validation"), { recursive: true });
-    await writeFile(
-      path.join(root, "validation", "unattended_summary.json"),
-      JSON.stringify(
-        {
-          passed: qc.passed,
-          plan,
-          provider: ctx.provider.id,
-          budget: createBudget(),
-          retry: DEFAULT_RETRY,
-        },
-        null,
-        2
-      )
-    );
-
-    if (!qc.passed) {
-      await writeHandoff(root, {
-        reason: "static_qc_failed",
-        project_path: root,
-        blocking_findings: qc.findings.filter((f) => f.severity === "ERROR").map((f) => f.type),
-        suggested_actions: ["Inspect validation/report.json", "Fix layer PNGs", "Re-run compile"],
-      });
-      process.exitCode = 1;
-    }
-    console.log(`unattended done passed=${qc.passed}`);
   });
 
 program

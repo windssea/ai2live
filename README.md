@@ -7,6 +7,16 @@
 面向 Live2D 的 **图层清单 → PSD → AutoLive2d / psd2live** 确定性编译管线，并含 M1–M6（分割、遮挡补全、表情差分、返修、无人值守）脚手架。  
 模型层可插拔：**本地默认 Grok**，之后可接 **ChatGPT / OpenAI** 或 **本地 Codex**，无需重写管线。
 
+### 统一控制台：一张设定图 → Live2D
+
+```bash
+pnpm install && pnpm -r build
+pnpm --filter @ai2live/studio dev   # http://127.0.0.1:5173 → 导入设定图 → 一键完成全部
+# 或 CLI：
+export AI2LIVE_MODEL_DRY_RUN=1
+pnpm --filter @ai2live/cli exec node dist/cli.js run ./my-char --from-image ./design.png --dry-run
+```
+
 **LEFT/RIGHT = 角色自身左右**。psd2live 仅外部协议，不拷贝 GPL 代码。
 
 ### 安装 / 构建 / 测试
@@ -27,12 +37,13 @@ pnpm --filter @ai2live/cli exec node dist/cli.js validate ../../examples/simple-
 pnpm compile:example && pnpm validate:example
 ```
 
-### Doctor / Studio / 分割
+### Doctor / 统一控制台 / 分割
 
 ```bash
 pnpm --filter @ai2live/cli exec node dist/cli.js doctor
+pnpm --filter @ai2live/cli exec node dist/cli.js run ../../examples/simple-character --dry-run
 pnpm --filter @ai2live/cli exec node dist/cli.js segment ../../examples/simple-character --feather 2 --split-bilateral --debug
-pnpm --filter @ai2live/studio dev   # http://127.0.0.1:5173
+pnpm --filter @ai2live/studio dev   # 统一控制台 http://127.0.0.1:5173
 ```
 
 ### 模型提供方（规划 / 诊断）
@@ -68,6 +79,15 @@ Apache-2.0（见 [LICENSE](./LICENSE)）。勿将 psd2live GPL 源码 vendor 进
 
 Deterministic **LayerManifest → PSD → AutoLive2d / psd2live** pipeline for Live2D-ready layered characters, plus M1–M6 scaffolding.  
 **Pluggable models:** default **Grok** locally; plug in **ChatGPT/OpenAI** or **local Codex** later without rewriting the pipeline.
+
+### Unified console: one design image → Live2D
+
+```bash
+pnpm install && pnpm -r build
+pnpm --filter @ai2live/studio dev   # import design image → Run All
+export AI2LIVE_MODEL_DRY_RUN=1
+pnpm --filter @ai2live/cli exec node dist/cli.js run ./my-char --from-image ./design.png --dry-run
+```
 
 LEFT/RIGHT always mean the **character’s own** left/right.
 
