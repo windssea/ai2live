@@ -6,7 +6,13 @@
 
 ### Single design image → Live2D (primary path)
 
-From **one character design/reference PNG** to layered PSD + AutoLive2d + psd2live packages — no hand-authored layer tree required.
+From **one character design/reference PNG** to a **downloadable layered PSD (primary asset)** plus AutoLive2d / psd2live packages — no hand-authored layer tree required.
+
+**Primary deliverable: layered PSD** (Photoshop / Live2D import):
+
+- `exports/<character_or_project>_layers.psd` (preferred for download/distribution)
+- `psd/character.psd` (pipeline working copy)
+- `exports/import_manifest.json` (UUID ↔ PSD layer name map)
 
 #### Studio console (recommended)
 
@@ -19,7 +25,7 @@ pnpm --filter @ai2live/studio dev
 1. **Import design image** (upload or local path)
 2. Pick provider (`grok` default); enable **dry-run** without API keys
 3. Click **Run All / 一键完成全部**
-4. Inspect live step progress, log, and artifact paths (PSD / adapters / `pipeline_report.json`)
+4. Download **PSD** from the Artifacts panel (「下载 PSD」), and inspect adapters / `pipeline_report.json`
 
 #### CLI one-shot
 
@@ -28,9 +34,10 @@ export AI2LIVE_MODEL_DRY_RUN=1
 ai2live run ./my-character --from-image ./design.png --dry-run --provider grok
 ```
 
-Outputs:
+Outputs (PSD is first-class):
 
-- `psd/character.psd` + import manifest
+- **`exports/<name>_layers.psd`** + `exports/import_manifest.json` (primary)
+- `psd/character.psd` (working copy)
 - AutoLive2d + psd2live deep session packages
 - `validation/pipeline_report.json`
 

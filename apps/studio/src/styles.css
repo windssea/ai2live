@@ -258,3 +258,36 @@ header {
   word-break: break-all;
   font-size: 0.7rem;
 }
+
+
+.psd-deliverable {
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid rgba(77, 163, 255, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #152033, #101822);
+}
+.psd-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.psd-list {
+  margin-bottom: 0;
+}
+a.download-psd {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #2a4a6a, #1e3550);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+a.download-psd:hover {
+  filter: brightness(1.08);
+}

@@ -26,7 +26,7 @@ type ProjectPayload = {
   settings?: { provider?: string; dryRun?: boolean };
   previewExists: Record<string, boolean>;
   previewUrls: Record<string, string | null>;
-  artifactPaths?: Record<string, string>;
+  artifactPaths?: Record<string, string | null | undefined>;
 };
 
 const STEP_DEFS: { id: string; label: string }[] = [
@@ -327,6 +327,24 @@ export function App() {
     return Object.entries(a).filter(([, v]) => Boolean(v));
   }, [project]);
 
+  const psdDownloads = useMemo(() => {
+    const items: { label: string; path: string }[] = [];
+    const arts = project?.pipelineReport?.artifacts ?? {};
+    const paths = project?.artifactPaths ?? {};
+    const exportPath = arts.psdExport || paths.psdExport;
+    const workingPath = arts.psd || paths.psd;
+    if (exportPath) {
+      items.push({ label: "exports/*.psd（推荐下载）", path: exportPath });
+    }
+    if (workingPath && workingPath !== exportPath) {
+      items.push({ label: "psd/character.psd", path: workingPath });
+    }
+    return items;
+  }, [project]);
+
+  const fileDownloadUrl = (filePath: string) =>
+    `/api/file?path=${encodeURIComponent(filePath)}&download=1`;
+
   return (
     <div className="app console">
       <header>
@@ -462,6 +480,7 @@ export function App() {
               </label>
             )
           )}
+          <p className="muted">Compile PSD 为必跑步骤，不可 skip。</p>
           <button disabled={busy} onClick={() => void saveSettings()}>
             Save prefs
           </button>
@@ -535,14 +554,47 @@ export function App() {
               </span>
             </p>
           )}
+          <div className="psd-deliverable">
+            <p className="psd-label">PSD 分层文件（可导入 Live2D / Photoshop）</p>
+            {psdDownloads.length === 0 ? (
+              <p className="muted">Run All 完成后可在此下载 PSD</p>
+            ) : (
+              <ul className="artifacts psd-list">
+                {psdDownloads.map((item) => (
+                  <li key={item.path}>
+                    <strong>{item.label}</strong>
+                    <code>{item.path}</code>
+                    <a
+                      className="download-psd"
+                      href={fileDownloadUrl(item.path)}
+                      download
+                    >
+                      下载 PSD
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <ul className="artifacts">
             {artifacts.length === 0 && (
-              <li className="muted">Run All 完成后显示 PSD / AutoLive2d / psd2live 路径</li>
+              <li className="muted">
+                Run All 完成后显示 PSD / AutoLive2d / psd2live 路径
+              </li>
             )}
             {artifacts.map(([k, v]) => (
               <li key={k}>
                 <strong>{k}</strong>
                 <code>{v}</code>
+                {(k === "psd" || k === "psdExport") && v ? (
+                  <a
+                    className="download-psd"
+                    href={fileDownloadUrl(v)}
+                    download
+                  >
+                    下载 PSD
+                  </a>
+                ) : null}
               </li>
             ))}
           </ul>

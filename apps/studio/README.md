@@ -18,7 +18,7 @@ pnpm --filter @ai2live/studio dev
 1. **导入设定图** (upload PNG or paste a local path)
 2. Choose **provider** (default `grok`) and **dry-run** if no API key
 3. Click **一键完成全部 / Run All**
-4. Watch the step checklist + live log; inspect PSD / AutoLive2d / psd2live paths on the right
+4. Watch the step checklist + live log; download **PSD 分层文件（可导入 Live2D / Photoshop）** via **下载 PSD** on the right (also lists `psd/character.psd` and `exports/*.psd`)
 
 `POST /api/pipeline` streams NDJSON `PipelineEvent`s (in-process `@ai2live/pipeline`, or CLI `--json-events` fallback). Cancel via `POST /api/pipeline/cancel`.
 

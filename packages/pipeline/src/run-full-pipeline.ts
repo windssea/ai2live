@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { seeThroughFromMaster } from "@ai2live/segmentation";
 import { completeOcclusionScenarios } from "@ai2live/occlusion";
@@ -47,13 +47,60 @@ function checkAbort(signal?: AbortSignal): void {
   }
 }
 
+
+function sanitizeExportSlug(raw: string): string {
+  const slug = raw
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w\u4e00-\u9fff.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[_.-]+|[_.-]+$/g, "");
+  return slug || "character";
+}
+
+async function resolveExportSlug(
+  root: string,
+  characterName?: string
+): Promise<string> {
+  if (characterName?.trim()) return sanitizeExportSlug(characterName);
+  try {
+    const raw = JSON.parse(
+      await readFile(path.join(root, "spec", "character.json"), "utf8")
+    ) as { name?: string };
+    if (raw.name?.trim()) return sanitizeExportSlug(raw.name);
+  } catch {
+    /* ignore */
+  }
+  return sanitizeExportSlug(path.basename(root));
+}
+
+async function exportPsdArtifacts(
+  root: string,
+  compiled: { psdPath: string; importManifestPath: string },
+  characterName?: string
+): Promise<{ psdExport: string; importManifestExport: string }> {
+  const exportsDir = path.join(root, "exports");
+  await mkdir(exportsDir, { recursive: true });
+  const slug = await resolveExportSlug(root, characterName);
+  const psdExport = path.join(exportsDir, `${slug}_layers.psd`);
+  const importManifestExport = path.join(exportsDir, "import_manifest.json");
+  await copyFile(compiled.psdPath, psdExport);
+  await copyFile(compiled.importManifestPath, importManifestExport);
+  return { psdExport, importManifestExport };
+}
+
+
 export async function runFullPipeline(
   opts: RunFullPipelineOptions
 ): Promise<PipelineResult> {
   const root = path.resolve(opts.projectRoot);
   const dryRun = Boolean(opts.dryRun);
   const provider = (opts.provider ?? resolveProviderId()) as ProviderId;
-  const skip = opts.skip ?? {};
+  const skip: Partial<Record<StepId, boolean>> = { ...(opts.skip ?? {}) };
+  // Compile is a primary deliverable — never skippable in Run All / runFullPipeline
+  if (skip.compile) {
+    delete skip.compile;
+  }
   const onEvent = opts.onEvent;
 
   if (dryRun) {
@@ -213,17 +260,20 @@ export async function runFullPipeline(
       };
     });
 
-    // 5. compile PSD
+    // 5. compile PSD (+ first-class exports/ copy)
     await runStep("compile", async () => {
       compiled = await compilePsd({ projectRoot: root });
       artifacts.psd = compiled.psdPath;
-      artifacts.importManifest = compiled.importManifestPath;
       artifacts.recomposed = compiled.recomposedPath;
+      const exported = await exportPsdArtifacts(root, compiled, opts.characterName);
+      artifacts.psdExport = exported.psdExport;
+      artifacts.importManifest = exported.importManifestExport;
       return {
-        message: compiled.psdPath,
+        message: exported.psdExport,
         data: {
           psdPath: compiled.psdPath,
-          importManifestPath: compiled.importManifestPath,
+          psdExport: exported.psdExport,
+          importManifestPath: exported.importManifestExport,
         },
       };
     });

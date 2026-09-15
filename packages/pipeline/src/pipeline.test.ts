@@ -57,6 +57,14 @@ describe("runFullPipeline dry-run", () => {
     for (const id of ["doctor", "segment", "compile", "qc", "downstream", "report"] as const) {
       expect(recorded).toContain(id);
     }
+    expect(result.artifacts.psd).toBeTruthy();
+    expect(result.artifacts.psdExport).toBeTruthy();
+    expect(result.artifacts.psdExport).toMatch(/exports\/.*_layers\.psd$/);
+    await access(result.artifacts.psd!);
+    await access(result.artifacts.psdExport!);
+    await access(result.artifacts.importManifest!);
+    // compile must not be skippable even if requested
+    expect(result.steps.find((s) => s.id === "compile")?.status).not.toBe("skip");
   }, 120_000);
 
   it("bootstraps from a single image then runs pipeline in temp dir", async () => {
@@ -85,6 +93,13 @@ describe("runFullPipeline dry-run", () => {
       const report = JSON.parse(await readFile(result.reportPath, "utf8"));
       expect(Array.isArray(report.steps)).toBe(true);
       expect(result.artifacts.psd || report.artifacts?.psd).toBeTruthy();
+      expect(result.artifacts.psdExport).toBeTruthy();
+      await access(result.artifacts.psdExport!);
+      const exportsDir = path.join(dir, "exports");
+      const { readdir } = await import("node:fs/promises");
+      const exportFiles = await readdir(exportsDir);
+      expect(exportFiles.some((f) => f.endsWith("_layers.psd"))).toBe(true);
+      expect(exportFiles).toContain("import_manifest.json");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -104,9 +119,26 @@ describe("runFullPipeline dry-run", () => {
       await access(path.join(dir, "spec", "layer_manifest.json"));
       await access(result.reportPath);
       expect(result.steps.some((s) => s.id === "bootstrap" && s.status !== "skip")).toBe(true);
+      expect(result.artifacts.psdExport).toBeTruthy();
+      await access(result.artifacts.psdExport!);
+      await access(path.join(dir, "exports", "import_manifest.json"));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  }, 120_000);
+
+
+  it("ignores skip.compile so PSD is always produced", async () => {
+    const result = await runFullPipeline({
+      projectRoot: EXAMPLE,
+      provider: "grok",
+      dryRun: true,
+      skip: { bootstrap: true, compile: true, repair: true },
+    });
+    const compileStep = result.steps.find((s) => s.id === "compile");
+    expect(compileStep?.status).not.toBe("skip");
+    expect(result.artifacts.psdExport).toBeTruthy();
+    await access(result.artifacts.psdExport!);
   }, 120_000);
 
   it("PIPELINE_STEPS lists expected order", () => {

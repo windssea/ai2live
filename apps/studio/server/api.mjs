@@ -5,7 +5,7 @@
  */
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { access, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { access, readFile, writeFile, mkdir, copyFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -141,9 +141,27 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      const psdWorking = path.join(projectPath, "psd", "character.psd");
+      let psdExport = null;
+      try {
+        const exportsDir = path.join(projectPath, "exports");
+        const names = await readdir(exportsDir);
+        const hit = names.find((n) => n.endsWith("_layers.psd") || n.endsWith(".psd"));
+        if (hit) psdExport = path.join(exportsDir, hit);
+      } catch {
+        /* no exports yet */
+      }
+      if (!psdExport && pipelineReport?.artifacts?.psdExport) {
+        psdExport = pipelineReport.artifacts.psdExport;
+      }
+
       const artifactPaths = {
-        psd: path.join(projectPath, "psd", "character.psd"),
-        importManifest: path.join(projectPath, "psd", "import_manifest.json"),
+        psd: psdWorking,
+        psdExport: psdExport,
+        importManifest:
+          pipelineReport?.artifacts?.importManifest ||
+          path.join(projectPath, "exports", "import_manifest.json"),
+        importManifestWorking: path.join(projectPath, "psd", "import_manifest.json"),
         autolive2d: path.join(projectPath, "builds", "autolive2d"),
         psd2live: path.join(projectPath, "builds", "psd2live"),
         pipelineReport: pipelineReportPath,
@@ -176,6 +194,9 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/file" && req.method === "GET") {
       const filePath = path.resolve(url.searchParams.get("path") || "");
+      const asDownload =
+        url.searchParams.get("download") === "1" ||
+        url.searchParams.get("download") === "true";
       try {
         await access(filePath);
       } catch {
@@ -188,12 +209,20 @@ const server = http.createServer(async (req, res) => {
           ? "image/png"
           : ext === ".json"
             ? "application/json"
-            : "application/octet-stream";
-      res.writeHead(200, {
+            : ext === ".psd"
+              ? "image/vnd.adobe.photoshop"
+              : "application/octet-stream";
+      /** @type {Record<string, string>} */
+      const headers = {
         "Content-Type": type,
         "Access-Control-Allow-Origin": "*",
         "Cache-Control": "no-store",
-      });
+      };
+      if (asDownload) {
+        const filename = path.basename(filePath).replace(/[\r\n"]/g, "_");
+        headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+      }
+      res.writeHead(200, headers);
       return res.end(buf);
     }
 
@@ -259,7 +288,9 @@ const server = http.createServer(async (req, res) => {
       const provider = body.provider ?? "grok";
       const dryRun = Boolean(body.dryRun);
       const fromImage = body.fromImage ? path.resolve(body.fromImage) : undefined;
-      const skip = body.skip ?? {};
+      const skip = { ...(body.skip ?? {}) };
+      // Compile is a first-class deliverable — never skippable from Studio Run All
+      delete skip.compile;
       const stream = body.stream !== false;
 
       const envPatch = { ...process.env };
