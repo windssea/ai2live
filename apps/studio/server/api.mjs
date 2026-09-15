@@ -167,6 +167,24 @@ const server = http.createServer(async (req, res) => {
         pipelineReport: pipelineReportPath,
       };
 
+
+      let projectState = null;
+      let handoff = null;
+      try {
+        projectState = JSON.parse(
+          await readFile(path.join(projectPath, ".ai2live", "state.json"), "utf8")
+        );
+      } catch {
+        /* optional */
+      }
+      try {
+        handoff = JSON.parse(
+          await readFile(path.join(projectPath, "validation", "human_handoff.json"), "utf8")
+        );
+      } catch {
+        /* optional */
+      }
+
       return send(res, 200, {
         projectPath,
         character,
@@ -176,6 +194,8 @@ const server = http.createServer(async (req, res) => {
         pipelineReport,
         segmentation,
         settings,
+        projectState,
+        handoff,
         previewExists,
         artifactPaths,
         previewUrls: {
@@ -269,6 +289,58 @@ const server = http.createServer(async (req, res) => {
         referencePath: destRef,
         fromImage: destMaster,
       });
+    }
+
+
+    if (url.pathname === "/api/layer/replace" && req.method === "POST") {
+      const body = await readJson(req);
+      const projectPath = resolveProject(body.projectPath);
+      const layerId = body.layerId;
+      if (!layerId) return send(res, 400, { error: "layerId required" });
+      await mkdir(path.join(projectPath, "layers", "_uploads"), { recursive: true });
+      let pngPath = body.pngPath ? path.resolve(body.pngPath) : null;
+      if (body.pngBase64) {
+        const raw = String(body.pngBase64).replace(/^data:image\/\w+;base64,/, "");
+        pngPath = path.join(projectPath, "layers", "_uploads", `${layerId}-${Date.now()}.png`);
+        await writeFile(pngPath, Buffer.from(raw, "base64"));
+      }
+      if (!pngPath) return send(res, 400, { error: "pngPath or pngBase64 required" });
+      const layerOpsJs = path.join(REPO_ROOT, "packages/layer-ops/dist/index.js");
+      await access(layerOpsJs);
+      const { replaceLayerPng } = await import(pathToFileURL(layerOpsJs).href);
+      const result = await replaceLayerPng({
+        projectRoot: projectPath,
+        layerId,
+        pngPath,
+      });
+      // Mark needs-review handoff resolved note
+      try {
+        const handoffPath = path.join(projectPath, "validation", "human_handoff.json");
+        const h = JSON.parse(await readFile(handoffPath, "utf8"));
+        h.resolved_layer_replace = {
+          layerId,
+          at: new Date().toISOString(),
+          asset_path: result.asset_path,
+        };
+        await writeFile(handoffPath, JSON.stringify(h, null, 2));
+      } catch {
+        /* no handoff */
+      }
+      return send(res, 200, { ok: true, ...result });
+    }
+
+    if (url.pathname === "/api/state/advance" && req.method === "POST") {
+      const body = await readJson(req);
+      const projectPath = resolveProject(body.projectPath);
+      const stateJs = path.join(REPO_ROOT, "packages/state-machine/dist/index.js");
+      await access(stateJs);
+      const sm = await import(pathToFileURL(stateJs).href);
+      const to = body.to || "REPAIRING";
+      const rec = await sm.advanceProjectState(projectPath, to, {
+        reason: body.reason || "studio_handoff_continue",
+        force: Boolean(body.force),
+      });
+      return send(res, 200, { ok: true, state: rec });
     }
 
     if (url.pathname === "/api/pipeline/cancel" && req.method === "POST") {

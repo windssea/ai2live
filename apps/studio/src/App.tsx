@@ -24,6 +24,18 @@ type ProjectPayload = {
   };
   segmentation?: unknown;
   settings?: { provider?: string; dryRun?: boolean };
+  projectState?: {
+    state?: string;
+    updated_at?: string;
+    history?: Array<{ to?: string; at?: string; reason?: string }>;
+  } | null;
+  handoff?: {
+    reason?: string;
+    blocking_findings?: string[];
+    suggested_actions?: string[];
+    timestamp?: string;
+    resolved_layer_replace?: unknown;
+  } | null;
   previewExists: Record<string, boolean>;
   previewUrls: Record<string, string | null>;
   artifactPaths?: Record<string, string | null | undefined>;
@@ -71,6 +83,8 @@ export function App() {
     Object.fromEntries(STEP_DEFS.map((s) => [s.id, "pending"]))
   );
   const [pipelineSummary, setPipelineSummary] = useState<string>("");
+  const [replaceLayerId, setReplaceLayerId] = useState("");
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -313,6 +327,61 @@ export function App() {
     }
   };
 
+
+  const advanceFromHandoff = async (to = "REPAIRING") => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ state?: { state?: string } }>("/api/state/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectPath,
+          to,
+          reason: "studio_needs_review_continue",
+        }),
+      });
+      setLog((p) => p + `State → ${r.state?.state ?? to}\n`);
+      await openProject(projectPath);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onReplaceLayerFile = async (file: File) => {
+    if (!replaceLayerId) {
+      setError("Select a layer id first");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      await api("/api/layer/replace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectPath,
+          layerId: replaceLayerId,
+          pngBase64: dataUrl,
+        }),
+      });
+      setLog((p) => p + `Replaced layer ${replaceLayerId} ← ${file.name}\n`);
+      await openProject(projectPath);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const passed =
     project?.pipelineReport?.passed ??
     (project?.validation &&
@@ -494,14 +563,41 @@ export function App() {
           )}
           <div className="layer-list">
             {(project?.layers ?? []).map((l) => (
-              <div className="layer" key={l.id}>
+              <div
+                className={`layer ${replaceLayerId === l.id ? "selected" : ""}`}
+                key={l.id}
+                onClick={() => setReplaceLayerId(l.id)}
+                role="button"
+                tabIndex={0}
+              >
                 <div>{l.display_name}</div>
                 <div className="meta">
                   {l.semantic} · {l.side} · z={l.z_index}
+                  {l.status ? ` · ${l.status}` : ""}
                 </div>
+                <div className="meta muted">{l.id}</div>
               </div>
             ))}
           </div>
+
+          <h2>Layer replace (NEEDS_REVIEW)</h2>
+          <p className="muted">Select a layer, then upload a PNG to replace-and-continue.</p>
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept="image/png"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onReplaceLayerFile(f);
+            }}
+          />
+          <button
+            disabled={busy || !replaceLayerId}
+            onClick={() => replaceInputRef.current?.click()}
+          >
+            Upload replace PNG…
+          </button>
         </aside>
 
         <main className="panel center">
@@ -515,6 +611,53 @@ export function App() {
               </li>
             ))}
           </ul>
+
+          <h2>State machine</h2>
+          <div className="state-panel">
+            <p>
+              <span className={`badge ${project?.projectState?.state === "NEEDS_REVIEW" ? "fail" : "ok"}`}>
+                {project?.projectState?.state ?? "UNKNOWN"}
+              </span>{" "}
+              <span className="muted">{project?.projectState?.updated_at ?? ""}</span>
+            </p>
+            <ol className="state-history">
+              {(project?.projectState?.history ?? []).slice(-8).map((h, i) => (
+                <li key={`${h.at}-${i}`}>
+                  → {h.to} <span className="muted">{h.reason}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {(project?.projectState?.state === "NEEDS_REVIEW" || project?.handoff) && (
+            <div className="handoff-panel">
+              <h2>Human handoff / NEEDS_REVIEW</h2>
+              <p className="muted">{project?.handoff?.reason ?? "Manual review requested"}</p>
+              <ul>
+                {(project?.handoff?.blocking_findings ?? []).map((f) => (
+                  <li key={f}>
+                    <code>{f}</code>
+                  </li>
+                ))}
+              </ul>
+              <p className="muted">Suggested:</p>
+              <ul>
+                {(project?.handoff?.suggested_actions ?? ["Replace layer PNG", "Re-run repair"]).map(
+                  (a) => (
+                    <li key={a}>{a}</li>
+                  )
+                )}
+              </ul>
+              <div className="row">
+                <button disabled={busy} onClick={() => void advanceFromHandoff("REPAIRING")}>
+                  Continue → REPAIRING
+                </button>
+                <button disabled={busy} onClick={() => void advanceFromHandoff("ASSET_GENERATING")}>
+                  Back → ASSET_GENERATING
+                </button>
+              </div>
+            </div>
+          )}
 
           <h2>预览</h2>
           <div className="previews">

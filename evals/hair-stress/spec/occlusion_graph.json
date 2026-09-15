@@ -1,0 +1,16 @@
+{
+  "version": "0.2",
+  "character_id": "char_hair_stress",
+  "edges": [
+    {
+      "id": "edge_bangs_face",
+      "occluder": "layer_front_hair",
+      "occludee": "layer_face",
+      "motion_risk": "high",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/bangs_under_face_mask.png"
+    }
+  ],
+  "note": "Richer occlusion graph: motion_risk, region_mask, completion_required",
+  "updated_at": "2026-09-15T02:31:59.761Z"
+}

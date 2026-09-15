@@ -15,3 +15,10 @@ export type {
   StepRecord,
 } from "./types.js";
 export { PIPELINE_STEPS } from "./types.js";
+
+export {
+  initProjectFromText,
+  textToCharacterSpec,
+  syntheticMasterSvg,
+} from "./init-from-text.js";
+export type { InitFromTextOptions, InitFromTextResult } from "./init-from-text.js";

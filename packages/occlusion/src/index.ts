@@ -7,3 +7,10 @@ export {
   type CompletionMaskResult,
   type OcclusionScenarioResult,
 } from "./complete.js";
+
+export {
+  enrichOcclusionEdges,
+  writeOcclusionGraph,
+  loadOcclusionGraph,
+  type OcclusionGraph,
+} from "./graph.js";

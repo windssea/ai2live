@@ -195,7 +195,10 @@
     {
       "id": "edge_bangs_face",
       "occluder": "layer_front_hair",
-      "occludee": "layer_face"
+      "occludee": "layer_face",
+      "motion_risk": "high",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/bangs_under_face_mask.png"
     }
   ]
 }

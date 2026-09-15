@@ -79,6 +79,12 @@ export interface OcclusionEdge {
   occludee: string;
   region_hint?: CanvasBounds;
   notes?: string;
+  /** Pose / motion risk when occluder moves (HeadX/Y etc.). */
+  motion_risk?: "low" | "medium" | "high";
+  /** Relative path to region mask PNG (opaque = completion ROI). */
+  region_mask?: string;
+  /** Whether hidden-region completion is required for this edge. */
+  completion_required?: boolean;
 }
 
 export interface LayerManifest {
@@ -103,6 +109,17 @@ export interface CharacterSpec {
   identity_prompt?: string;
   tags?: string[];
   notes?: string;
+  /** DESIGN Phase A extras (optional). */
+  style?: string;
+  body_crop?: string;
+  pose?: string;
+  hair?: Record<string, unknown>;
+  eyes?: Record<string, unknown>;
+  outfit?: Record<string, unknown>;
+  accessories?: unknown[];
+  target_backends?: string[];
+  quality_tier?: string;
+  source_text?: string;
 }
 
 export type FindingSeverity = "INFO" | "WARNING" | "ERROR";

@@ -37,13 +37,38 @@ import {
   type ProviderId,
 } from "@ai2live/model-providers";
 import { editImageViaProvider } from "@ai2live/image-client";
-import { runFullPipeline, type StepId } from "@ai2live/pipeline";
+import { runFullPipeline, initProjectFromText, type StepId } from "@ai2live/pipeline";
 import { replaceLayerPng } from "@ai2live/layer-ops";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const program = new Command();
 program.name("ai2live").description("AI Live2D Asset Compiler CLI").version("0.1.0");
+
+
+program
+  .command("init")
+  .description("Phase B stub: text → character_spec → synthetic SVG master + layer template")
+  .argument("<projectDir>", "Project directory to create/use")
+  .requiredOption("--text <text>", "Character description text")
+  .option("--name <name>", "Character display name")
+  .option("--width <n>", "Master width", (v) => parseInt(v, 10))
+  .option("--height <n>", "Master height", (v) => parseInt(v, 10))
+  .action(async (projectDir: string, opts: { text: string; name?: string; width?: number; height?: number }) => {
+    const root = path.resolve(projectDir);
+    const result = await initProjectFromText({
+      projectRoot: root,
+      text: opts.text,
+      characterName: opts.name,
+      width: opts.width,
+      height: opts.height,
+    });
+    console.log(`Initialized ${result.projectRoot}`);
+    console.log(`character_spec: ${result.characterSpecPath}`);
+    console.log(`master: ${result.masterPath}`);
+    console.log(`manifest: ${result.manifestPath}`);
+    console.log(`method: ${result.method}`);
+  });
 
 program
   .command("compile")
