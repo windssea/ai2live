@@ -81,3 +81,9 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 - **History JSONL backend:** `AI2LIVE_HISTORY_BACKEND=jsonl|sqlite` → `.ai2live/history/events.jsonl` + index
 - **Studio:** state machine panel + NEEDS_REVIEW handoff + layer replace upload
 
+### Batch 8
+- **DoD status:** `docs/DOD_STATUS.md` + `docs/DESIGN_COMPLETION.md`
+- **Gates 7/8:** mock-rig extremes + editability checklist
+- **Stop conditions:** max repair attempts + metric-flat stop in pipeline
+- **`ai2live run` defaults:** vision-review dry-run dual-judge + mock rig on
+

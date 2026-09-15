@@ -21,7 +21,9 @@ export type GateId =
   | "GATE_2_VISIBLE_PIXEL_FIDELITY"
   | "GATE_3_COMPOSITE_FIDELITY"
   | "GATE_4_OVERLAP_SUFFICIENCY"
-  | "GATE_5_GENERATED_REGION";
+  | "GATE_5_GENERATED_REGION"
+  | "GATE_7_RIG_EXTREME_POSE"
+  | "GATE_8_EDITABILITY";
 
 export interface GateResult {
   gate: GateId;
@@ -823,11 +825,17 @@ export async function runQualityGates(opts: {
     note: "Tightened MAE/MSE thresholds applied in runStaticQc",
   };
 
-  const gates = [g0, g1, g2, g3, g4, g5];
+  const { runGate7RigExtremePose, runGate8Editability } = await import("./gate78.js");
+  const g7 = await runGate7RigExtremePose(root);
+  const { gate: g8 } = await runGate8Editability(root);
+
+  const gates = [g0, g1, g2, g3, g4, g5, g7, g8];
   const findings = gates.flatMap((g) => g.findings);
   const metrics: Record<string, number> = {};
   for (const g of gates) Object.assign(metrics, g.metrics);
-  const passed = gates.every((g) => g.passed);
+  // Gates 7/8 are soft for aggregate pass of 0–5 core; report them but don't fail core QC alone
+  const core = [g0, g1, g2, g3, g4, g5];
+  const passed = core.every((g) => g.passed);
 
   return { version: "0.1", gates, passed, findings, metrics };
 }

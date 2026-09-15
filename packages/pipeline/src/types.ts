@@ -77,6 +77,10 @@ export interface RunFullPipelineOptions {
   alwaysRepair?: boolean;
   /** Apply deterministic repair action after plan (writes repair_result.json). */
   applyRepair?: boolean;
-  /** Optional DESIGN §16 dual-judge vision review on QC / pose. */
+  /** Optional DESIGN §16 dual-judge vision review on QC / pose. Default: true (dry-run mock). */
   visionReview?: boolean;
+  /** Max repair loop attempts (stop condition). Default: 3. */
+  maxRepairAttempts?: number;
+  /** Stop when QC metric improvement flat for N rounds. Default: 2. */
+  flatRoundsToStop?: number;
 }
