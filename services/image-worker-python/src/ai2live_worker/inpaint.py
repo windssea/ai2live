@@ -168,61 +168,101 @@ def _try_opencv_inpaint(image_path: str, mask_path: str) -> dict[str, Any] | Non
     }
 
 
+def _is_frontier(need: list[int], width: int, height: int, x: int, y: int) -> bool:
+    """True if masked pixel has a known (non-need or already filled) 4-neighbor."""
+    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        nx, ny = x + dx, y + dy
+        if nx < 0 or ny < 0 or nx >= width or ny >= height:
+            continue
+        if not need[ny * width + nx]:
+            return True
+    return False
+
+
 def _telea_like_fill(width: int, height: int, rgba: bytearray, mask: bytearray) -> bytearray:
-    """Iterative nearest-neighbor / distance-weighted fill (telea-like, no OpenCV)."""
+    """Improved telea-like fill: frontier-first (FMM-ish) + multi-radius + Poisson-ish blend.
+
+    Prefer filling border pixels before interior so gradients propagate inward.
+    No OpenCV required.
+    """
     out = bytearray(rgba)
-    # binary mask: 1 = needs fill
     need = [0] * (width * height)
     for i in range(width * height):
         need[i] = 1 if mask[i * 4 + 3] >= 128 else 0
 
-    radii = (1, 2, 4, 8, 16, 32)
-    # Multi-pass growing fill so interior gets values from newly filled border
-    for _pass in range(4):
+    radii = (1, 2, 3, 5, 8, 12, 20, 32)
+    remaining = sum(need)
+    # More passes for larger holes; cap for perf
+    max_passes = min(12, max(6, remaining // max(1, width) + 4))
+    for _pass in range(max_passes):
+        if remaining <= 0:
+            break
         snap = bytearray(out)
+        # Collect frontier first, then interior
+        frontier: list[int] = []
+        interior: list[int] = []
         for y in range(height):
             for x in range(width):
                 p = y * width + x
                 if not need[p]:
                     continue
-                # skip if already filled in a previous pass with decent alpha
-                oi = p * 4
-                if _pass > 0 and out[oi + 3] >= 200 and need[p]:
-                    # still refine below
-                    pass
-                found = False
+                # already well-filled from prior pass → treat as known seed
+                if snap[p * 4 + 3] >= 230 and _pass > 0:
+                    # still allow refine on frontier only
+                    if _is_frontier(need, width, height, x, y):
+                        frontier.append(p)
+                    continue
+                if _is_frontier(need, width, height, x, y):
+                    frontier.append(p)
+                else:
+                    interior.append(p)
+        order = frontier + (interior if _pass >= 2 else [])
+        filled_this = 0
+        for p in order:
+            y, x = p // width, p % width
+            oi = p * 4
+            found = False
+            sr = sg = sb = sw = 0.0
+            for rad in radii:
                 sr = sg = sb = sw = 0.0
-                for rad in radii:
-                    sr = sg = sb = sw = 0.0
-                    for dy in range(-rad, rad + 1):
-                        for dx in range(-rad, rad + 1):
-                            nx, ny = x + dx, y + dy
-                            if nx < 0 or ny < 0 or nx >= width or ny >= height:
-                                continue
-                            np_ = ny * width + nx
-                            ni = np_ * 4
-                            # Prefer known (non-mask) opaque pixels; allow previously filled
-                            if snap[ni + 3] < 200:
-                                continue
-                            if need[np_] and (dx != 0 or dy != 0) and snap[ni + 3] < 220:
-                                continue
-                            dist = (dx * dx + dy * dy) ** 0.5 or 0.5
-                            w = 1.0 / dist
-                            sr += snap[ni] * w
-                            sg += snap[ni + 1] * w
-                            sb += snap[ni + 2] * w
-                            sw += w
-                    if sw > 0:
-                        found = True
-                        break
-                if found and sw > 0:
-                    out[oi] = int(sr / sw)
-                    out[oi + 1] = int(sg / sw)
-                    out[oi + 2] = int(sb / sw)
-                    out[oi + 3] = 230
+                for dy in range(-rad, rad + 1):
+                    for dx in range(-rad, rad + 1):
+                        if dx * dx + dy * dy > rad * rad:
+                            continue
+                        nx, ny = x + dx, y + dy
+                        if nx < 0 or ny < 0 or nx >= width or ny >= height:
+                            continue
+                        np_ = ny * width + nx
+                        ni = np_ * 4
+                        if snap[ni + 3] < 180:
+                            continue
+                        # Prefer outside-mask known pixels; allow previously filled
+                        known = not need[np_] or snap[ni + 3] >= 220
+                        if not known and (dx != 0 or dy != 0):
+                            continue
+                        dist = (dx * dx + dy * dy) ** 0.5 or 0.5
+                        # Slight boost for horizontal/vertical neighbors (structure)
+                        w = (1.5 / dist) if (dx == 0 or dy == 0) else (1.0 / dist)
+                        if not need[np_]:
+                            w *= 1.35
+                        sr += snap[ni] * w
+                        sg += snap[ni + 1] * w
+                        sb += snap[ni + 2] * w
+                        sw += w
+                if sw > 0:
+                    found = True
+                    break
+            if found and sw > 0:
+                out[oi] = int(sr / sw)
+                out[oi + 1] = int(sg / sw)
+                out[oi + 2] = int(sb / sw)
+                out[oi + 3] = 235
+                filled_this += 1
+        if filled_this == 0:
+            break
 
-    # Soften mask border (poisson-ish average)
-    for _ in range(2):
+    # Soften mask border (poisson-ish average) — 3 passes
+    for _ in range(3):
         snap = bytearray(out)
         for y in range(1, height - 1):
             for x in range(1, width - 1):
@@ -249,10 +289,10 @@ def _telea_like_fill(width: int, height: int, rgba: bytearray, mask: bytearray) 
                         sb += snap[ni + 2]
                         sa += snap[ni + 3]
                         n += 1
-                out[i] = int(0.45 * snap[i] + 0.55 * (sr / n))
-                out[i + 1] = int(0.45 * snap[i + 1] + 0.55 * (sg / n))
-                out[i + 2] = int(0.45 * snap[i + 2] + 0.55 * (sb / n))
-                out[i + 3] = max(snap[i + 3], int(0.7 * snap[i + 3] + 0.3 * (sa / n)))
+                out[i] = int(0.4 * snap[i] + 0.6 * (sr / n))
+                out[i + 1] = int(0.4 * snap[i + 1] + 0.6 * (sg / n))
+                out[i + 2] = int(0.4 * snap[i + 2] + 0.6 * (sb / n))
+                out[i + 3] = max(snap[i + 3], int(0.65 * snap[i + 3] + 0.35 * (sa / n)))
     return out
 
 

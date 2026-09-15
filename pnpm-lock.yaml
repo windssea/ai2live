@@ -349,6 +349,22 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.2)
 
+  packages/mock-rig-runtime:
+    dependencies:
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
+
   packages/model-providers:
     devDependencies:
       '@types/node':
@@ -561,6 +577,9 @@ importers:
       '@ai2live/history':
         specifier: workspace:*
         version: link:../history
+      '@ai2live/mock-rig-runtime':
+        specifier: workspace:*
+        version: link:../mock-rig-runtime
       '@ai2live/qc-engine':
         specifier: workspace:*
         version: link:../qc-engine

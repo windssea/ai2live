@@ -3,13 +3,29 @@
   "version": "0.1",
   "character_id": "char_0191e8a0-0000-4000-8000-000000000001",
   "master_asset_id": "asset_master_neutral",
-  "canvas": { "width": 256, "height": 256 },
+  "canvas": {
+    "width": 256,
+    "height": 256
+  },
   "spatial_references": [
     {
       "id": "view_full",
-      "view_rect_canvas": [0, 0, 1, 1],
-      "source_pixel_rect": [0, 0, 256, 256],
-      "output_size": [256, 256]
+      "view_rect_canvas": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "source_pixel_rect": [
+        0,
+        0,
+        256,
+        256
+      ],
+      "output_size": [
+        256,
+        256
+      ]
     }
   ],
   "layers": [
@@ -21,8 +37,16 @@
       "index": 1,
       "z_index": 10,
       "group": "BACK_HAIR",
-      "canvas_bounds": { "x": 0.25, "y": 0.08, "w": 0.5, "h": 0.55 },
-      "source": { "type": "user_asset", "asset_path": "layers/back_hair.png" },
+      "canvas_bounds": {
+        "x": 0.25,
+        "y": 0.08,
+        "w": 0.5,
+        "h": 0.55
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/back_hair.png"
+      },
       "status": "READY"
     },
     {
@@ -33,8 +57,16 @@
       "index": 1,
       "z_index": 20,
       "group": "BODY",
-      "canvas_bounds": { "x": 0.3, "y": 0.45, "w": 0.4, "h": 0.5 },
-      "source": { "type": "user_asset", "asset_path": "layers/body.png" },
+      "canvas_bounds": {
+        "x": 0.3,
+        "y": 0.45,
+        "w": 0.4,
+        "h": 0.5
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/body.png"
+      },
       "status": "READY"
     },
     {
@@ -45,10 +77,23 @@
       "index": 1,
       "z_index": 25,
       "group": "ARMS",
-      "canvas_bounds": { "x": 0.18, "y": 0.48, "w": 0.18, "h": 0.35 },
-      "source": { "type": "user_asset", "asset_path": "layers/arm_l.png" },
+      "canvas_bounds": {
+        "x": 0.18,
+        "y": 0.48,
+        "w": 0.18,
+        "h": 0.35
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/arm_l.png"
+      },
       "status": "READY",
-      "overlap": { "required_with": ["layer_0191e8a0-0000-4000-8000-body00001"], "minimum_px_at_master_resolution": 8 }
+      "overlap": {
+        "required_with": [
+          "layer_0191e8a0-0000-4000-8000-body00001"
+        ],
+        "minimum_px_at_master_resolution": 8
+      }
     },
     {
       "id": "layer_0191e8a0-0000-4000-8000-armr00001",
@@ -58,8 +103,16 @@
       "index": 1,
       "z_index": 25,
       "group": "ARMS",
-      "canvas_bounds": { "x": 0.64, "y": 0.48, "w": 0.18, "h": 0.35 },
-      "source": { "type": "user_asset", "asset_path": "layers/arm_r.png" },
+      "canvas_bounds": {
+        "x": 0.64,
+        "y": 0.48,
+        "w": 0.18,
+        "h": 0.35
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/arm_r.png"
+      },
       "status": "READY"
     },
     {
@@ -70,8 +123,16 @@
       "index": 1,
       "z_index": 40,
       "group": "FACE",
-      "canvas_bounds": { "x": 0.32, "y": 0.12, "w": 0.36, "h": 0.36 },
-      "source": { "type": "user_asset", "asset_path": "layers/face.png" },
+      "canvas_bounds": {
+        "x": 0.32,
+        "y": 0.12,
+        "w": 0.36,
+        "h": 0.36
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/face.png"
+      },
       "status": "READY"
     },
     {
@@ -82,8 +143,16 @@
       "index": 1,
       "z_index": 50,
       "group": "EYES",
-      "canvas_bounds": { "x": 0.38, "y": 0.22, "w": 0.1, "h": 0.08 },
-      "source": { "type": "user_asset", "asset_path": "layers/eye_l.png" },
+      "canvas_bounds": {
+        "x": 0.38,
+        "y": 0.22,
+        "w": 0.1,
+        "h": 0.08
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/eye_l.png"
+      },
       "status": "READY"
     },
     {
@@ -94,8 +163,16 @@
       "index": 1,
       "z_index": 50,
       "group": "EYES",
-      "canvas_bounds": { "x": 0.52, "y": 0.22, "w": 0.1, "h": 0.08 },
-      "source": { "type": "user_asset", "asset_path": "layers/eye_r.png" },
+      "canvas_bounds": {
+        "x": 0.52,
+        "y": 0.22,
+        "w": 0.1,
+        "h": 0.08
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/eye_r.png"
+      },
       "status": "READY"
     },
     {
@@ -106,8 +183,16 @@
       "index": 1,
       "z_index": 55,
       "group": "FACE_DETAIL",
-      "canvas_bounds": { "x": 0.44, "y": 0.36, "w": 0.12, "h": 0.06 },
-      "source": { "type": "user_asset", "asset_path": "layers/mouth.png" },
+      "canvas_bounds": {
+        "x": 0.44,
+        "y": 0.36,
+        "w": 0.12,
+        "h": 0.06
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/mouth.png"
+      },
       "status": "READY"
     },
     {
@@ -118,10 +203,23 @@
       "index": 1,
       "z_index": 70,
       "group": "FRONT_HAIR",
-      "canvas_bounds": { "x": 0.28, "y": 0.05, "w": 0.44, "h": 0.28 },
-      "source": { "type": "user_asset", "asset_path": "layers/front_hair.png" },
+      "canvas_bounds": {
+        "x": 0.28,
+        "y": 0.05,
+        "w": 0.44,
+        "h": 0.28
+      },
+      "source": {
+        "type": "master_pixels",
+        "asset_path": "layers/front_hair.png"
+      },
       "status": "READY",
-      "overlap": { "required_with": ["layer_0191e8a0-0000-4000-8000-face00001"], "minimum_px_at_master_resolution": 12 }
+      "overlap": {
+        "required_with": [
+          "layer_0191e8a0-0000-4000-8000-face00001"
+        ],
+        "minimum_px_at_master_resolution": 12
+      }
     }
   ],
   "occlusion_edges": [

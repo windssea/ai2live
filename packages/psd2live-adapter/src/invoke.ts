@@ -6,6 +6,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export interface Psd2LiveInvokeResult {
   attempted: boolean;
@@ -37,6 +38,20 @@ function resolveMcpUrl(): string | undefined {
   const u = process.env.AI2LIVE_PSD2LIVE_MCP_URL?.trim();
   return u || undefined;
 }
+
+function useMockRig(): boolean {
+  const v = (process.env.AI2LIVE_USE_MOCK_RIG ?? "1").trim().toLowerCase();
+  return v !== "0" && v !== "false" && v !== "off" && v !== "no";
+}
+
+function resolveMockCmd(): string | undefined {
+  if (!useMockRig()) return undefined;
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../scripts/mock-rig/psd2live-mock.mjs"
+  );
+}
+
 
 function run(cmd: string, args: string[], cwd: string, timeoutMs = 15_000): Promise<{
   code: number | null;
@@ -114,15 +129,60 @@ export async function invokePsd2LiveSmoke(opts: {
   const mcp = resolveMcpUrl();
 
   if (!cmd && !mcp) {
+    const mockCmd = resolveMockCmd();
+    if (mockCmd && useMockRig()) {
+      const node = process.execPath;
+      const help = await run(node, [mockCmd, "--help"], outDir, 10_000);
+      const ver = await run(node, [mockCmd, "--version"], outDir, 10_000);
+      const smoke = await run(node, [mockCmd, "smoke", outDir], outDir, 20_000);
+      const okPath = path.join(outDir, "invoke_result.json");
+      const payload = {
+        attempted: true,
+        skipped: false,
+        ok: help.code === 0 && smoke.code === 0,
+        reason: "Mock psd2live runner invoked (AI2LIVE_USE_MOCK_RIG=1; real CMD unset)",
+        skipped_reason_code: null,
+        via: "mock_rig",
+        mock_cmd: mockCmd,
+        exit_code: smoke.code,
+        stdout_tail: (help.stdout + "\n" + smoke.stdout).slice(-2000),
+        stderr_tail: (help.stderr + "\n" + smoke.stderr).slice(-2000),
+        license_note: "psd2live is GPL — ai2live never vendors it; mock runner only",
+        safe_check: {
+          cmd_set: false,
+          mcp_set: false,
+          cmd_resolvable: true,
+          help_ok: help.code === 0,
+          notes: [
+            "mock_rig runner used — set AI2LIVE_PSD2LIVE_CMD for real external binary",
+            `version_ok=${ver.code === 0}`,
+          ],
+        },
+      };
+      await writeFile(okPath, JSON.stringify(payload, null, 2));
+      const log_path = await writeLog(outDir, {
+        ...payload,
+        result_file: "invoke_result.json",
+      });
+      return {
+        attempted: true,
+        skipped: false,
+        reason: payload.reason,
+        exit_code: smoke.code,
+        report_path: okPath,
+        log_path,
+        safe_check: payload.safe_check,
+      };
+    }
     const payload = {
       attempted: false,
       skipped: true,
       reason:
-        "AI2LIVE_PSD2LIVE_CMD / AI2LIVE_PSD2LIVE_MCP_URL unset — external GPL process only; smoke skipped",
+        "AI2LIVE_PSD2LIVE_CMD / AI2LIVE_PSD2LIVE_MCP_URL unset — external GPL process only; smoke skipped (mock rig disabled)",
       skipped_reason_code: "ENV_UNSET",
       package_dir: outDir,
       license_note: "psd2live is GPL — ai2live never vendors it; invoke externally",
-      hint: "Install psd2live separately; set AI2LIVE_PSD2LIVE_CMD or AI2LIVE_PSD2LIVE_MCP_URL",
+      hint: "Install psd2live separately; set AI2LIVE_PSD2LIVE_CMD or AI2LIVE_USE_MOCK_RIG=1 for mock",
       safe_check: {
         cmd_set: false,
         mcp_set: false,

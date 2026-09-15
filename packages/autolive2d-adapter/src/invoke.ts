@@ -6,6 +6,7 @@
 import { mkdir, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export interface AutoLive2dInvokeResult {
   attempted: boolean;
@@ -34,6 +35,23 @@ function resolveCmd(): string | undefined {
   if (b) return b;
   return undefined;
 }
+
+function useMockRig(): boolean {
+  const v = (process.env.AI2LIVE_USE_MOCK_RIG ?? "1").trim().toLowerCase();
+  return v !== "0" && v !== "false" && v !== "off" && v !== "no";
+}
+
+/** Resolve in-repo mock AutoLive2d runner (scripts/mock-rig/autolive2d-mock.mjs). */
+function resolveMockCmd(): string | undefined {
+  if (!useMockRig()) return undefined;
+  // Walk up from this package to monorepo root
+  const candidates = [
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/mock-rig/autolive2d-mock.mjs"),
+    path.resolve(process.cwd(), "scripts/mock-rig/autolive2d-mock.mjs"),
+  ];
+  return candidates[0];
+}
+
 
 function run(cmd: string, args: string[], cwd: string, timeoutMs = 15_000): Promise<{
   code: number | null;
@@ -120,14 +138,58 @@ export async function invokeAutoLive2dSmoke(opts: {
   const cmd = resolveCmd();
 
   if (!cmd) {
+    const mockCmd = resolveMockCmd();
+    if (mockCmd && useMockRig()) {
+      const node = process.execPath;
+      const safe = await safeCheckAutoLive2d(`${node} ${mockCmd}`, outDir);
+      // Prefer direct spawn of node + script
+      const help = await run(node, [mockCmd, "--help"], outDir, 10_000);
+      const ver = await run(node, [mockCmd, "--version"], outDir, 10_000);
+      const imp = await run(node, [mockCmd, "import", outDir], outDir, 20_000);
+      const okPath = path.join(outDir, "invoke_result.json");
+      const payload = {
+        attempted: true,
+        skipped: false,
+        ok: (help.code === 0 || ver.code === 0) && (imp.code === 0 || imp.code === null),
+        reason: "Mock AutoLive2d runner invoked (AI2LIVE_USE_MOCK_RIG=1; real CMD unset)",
+        skipped_reason_code: null,
+        via: "mock_rig",
+        mock_cmd: mockCmd,
+        exit_code: imp.code ?? help.code,
+        stdout_tail: (help.stdout + "\n" + imp.stdout).slice(-2000),
+        stderr_tail: (help.stderr + "\n" + imp.stderr).slice(-2000),
+        project_root: root,
+        safe_check: {
+          cmd_set: false,
+          cmd_resolvable: true,
+          help_ok: help.code === 0,
+          version_ok: ver.code === 0,
+          notes: ["mock_rig runner used — set AI2LIVE_AUTOLIVE2D_CMD for real binary"],
+        },
+      };
+      await writeFile(okPath, JSON.stringify(payload, null, 2));
+      const log_path = await writeLog(outDir, {
+        ...payload,
+        result_file: "invoke_result.json",
+      });
+      return {
+        attempted: true,
+        skipped: false,
+        reason: payload.reason,
+        exit_code: payload.exit_code,
+        report_path: okPath,
+        log_path,
+        safe_check: payload.safe_check,
+      };
+    }
     const payload = {
       attempted: false,
       skipped: true,
       reason:
-        "AI2LIVE_AUTOLIVE2D_CMD / AI2LIVE_AUTOLIVE2D_BIN unset — package written; import smoke skipped",
+        "AI2LIVE_AUTOLIVE2D_CMD / AI2LIVE_AUTOLIVE2D_BIN unset — package written; import smoke skipped (mock rig disabled)",
       skipped_reason_code: "ENV_UNSET",
       package_dir: outDir,
-      hint: "Set AI2LIVE_AUTOLIVE2D_CMD to your AutoLive2d CLI (e.g. 'autolive2d import')",
+      hint: "Set AI2LIVE_AUTOLIVE2D_CMD or AI2LIVE_USE_MOCK_RIG=1 for mock runner",
       safe_check: {
         cmd_set: false,
         cmd_resolvable: false,
