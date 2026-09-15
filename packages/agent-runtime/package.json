@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@ai2live/history": "workspace:*",
-    "@ai2live/product": "workspace:*"
+    "@ai2live/product": "workspace:*",
+    "@ai2live/model-providers": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
