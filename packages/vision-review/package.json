@@ -1,5 +1,5 @@
 {
-  "name": "@ai2live/qc-engine",
+  "name": "@ai2live/vision-review",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,11 +17,7 @@
     "lint": "echo ok"
   },
   "dependencies": {
-    "@ai2live/domain": "workspace:*",
-    "@ai2live/manifest-schema": "workspace:*",
-    "@ai2live/psd-compiler": "workspace:*",
-    "sharp": "^0.33.5",
-    "@ai2live/vision-review": "workspace:*"
+    "@ai2live/model-providers": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

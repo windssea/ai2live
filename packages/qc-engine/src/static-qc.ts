@@ -15,6 +15,10 @@ export interface StaticQcOptions {
   mseThreshold?: number;
   /** When false, skip Gates 0–5 suite (default true). */
   runGates?: boolean;
+  /** Optional DESIGN §16 dual-judge: run VLM review and merge with CV. */
+  visionReview?: boolean;
+  /** Force VLM dry-run mock (default true when visionReview). */
+  visionReviewDryRun?: boolean;
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -238,6 +242,39 @@ export async function runStaticQc(options: StaticQcOptions): Promise<ValidationR
         severity: "WARNING",
         type: "GATES_SUITE_ERROR",
         message: `Quality gates suite error: ${(err as Error).message}`,
+      });
+    }
+  }
+
+  // Optional dual-judge (DESIGN §16): CV + VLM → VALIDATED only if both pass
+  if (options.visionReview) {
+    try {
+      const { runDualJudge } = await import("@ai2live/vision-review");
+      const prelimPassed = !findings.some((f) => f.severity === "ERROR");
+      const dual = await runDualJudge({
+        projectRoot,
+        cvReport: { passed: prelimPassed, findings, metrics },
+        dryRun: options.visionReviewDryRun !== false,
+        context: `static_qc mae=${metrics.mae ?? "n/a"} findings=${findings.length}`,
+      });
+      metrics.dual_judge_validated = dual.validated ? 1 : 0;
+      metrics.dual_judge_cv = dual.cv.passed ? 1 : 0;
+      metrics.dual_judge_vlm = dual.vlm?.passed ? 1 : 0;
+      findings.push({
+        id: createStableId("finding", "dual-judge"),
+        severity: dual.validated ? "INFO" : "WARNING",
+        type: dual.validated ? "DUAL_JUDGE_VALIDATED" : "DUAL_JUDGE_NOT_VALIDATED",
+        message: `Dual-judge outcome=${dual.outcome} validated=${dual.validated} (VLM dry_run=${dual.vlm?.dry_run ?? "?"})`,
+        recommended_action: dual.validated
+          ? undefined
+          : "Inspect validation/dual_judge.json / vision_review.json",
+      });
+    } catch (err) {
+      findings.push({
+        id: createStableId("finding", "dual-judge-err"),
+        severity: "WARNING",
+        type: "DUAL_JUDGE_ERROR",
+        message: `Dual-judge error: ${(err as Error).message}`,
       });
     }
   }
