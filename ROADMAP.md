@@ -12,28 +12,39 @@ See-through / stub segmentation (`ai2live segment`) writing `masks/` + draft lay
 ## M2 — Occlusion Completion
 
 Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, body over arm root.
-**Progress:** Completion mask = occluder dilated ∩ missing under-layer; prefer `provider.imageEdit`; fallback multi-scale neighbor blend (`completion_method`). Still heuristic vs full DESIGN inpaint.
+**Progress (batch3):** Min-region inpaint interface (`minRegionInpaint`) — live `image_edit` → worker `opencv_inpaint` / telea-like → `neighbor_blend`. Provenance `completion_method` on report.
 
 ## M3 — Expression Differentials
 
 `ai2live expressions`: mouth open, eye close, smile, special eye (full-character differentials).
-**Progress:** Edit-delta prompts via `provider.imageEdit`; dry-run shares path then ROI soft-morph stub; provenance (`prompt_hash`, `method`) on report.
+**Progress (batch3):** Feathered ROI mask + same min-region inpaint path; dry-run seeds ROI morph then inpaint.
 
 ## M4 — Agent Repair Loop
 
 `ai2live repair` / `ai2live agent repair --apply`: pose grid stubs, LLM plan, **real apply** of ≥1 deterministic action (occlusion / feather / recompile) + re-QC → `validation/repair_result.json` + history revisions.
+**Progress (batch3):** Pose QA writes **parameter-contract screenshots** (annotated composites) + `pose_qa_findings.json` when no live renderer.
 
 ## M5 — psd2live Deep Integration
 
 `ai2live downstream --deep`: external MCP/CLI session script only — **no GPL copy**.
+**Progress (batch3):** `invokePsd2LiveSmoke` / `invokeAutoLive2dSmoke` — detect `AI2LIVE_*_CMD` env; else `builds/.../invoke_skipped.json`.
 
 ## M6 — Unattended Product
 
 `ai2live unattended` / `ai2live run`: budget/retry/handoff + pipeline; `--apply-repair` closes the repair loop when requested.
 
-## Quality gates / MCP / history / evals (Batch 2)
+## Quality gates / MCP / history / evals
 
-- Gates 0–5 scaffolding with real Gate 2 visible-pixel fidelity + Gate 4 overlap heuristic; Gate 3 thresholds tightened; report in `validation/quality_gates.json`
-- MCP tools: `inspect`, `compose`, `validate`, `downstream`, `revision` (+ legacy compile/providers/agent_plan)
-- `ai2live revision list|checkout|resume` + HistoryStore.checkout
-- Eval: `evals/hair-stress` + `evals/run-hair-stress.mjs` pass-rate report
+### Batch 2
+- Gates 0–5 scaffolding with real Gate 2 + Gate 4; MCP inspect/compose/validate/downstream/revision; hair-stress eval
+
+### Batch 3 (~48–52% DoD)
+- **Inpaint:** `@ai2live/image-client` `minRegionInpaint` + Python worker OpenCV/telea-like
+- **MCP §8 complete:** `design`, `view`, `asset`, `layer`, `task` (+ existing)
+- **Gates 0 / 1 / 5:** real heuristics (riggability, anime upper-body plan completeness, generated-region consistency)
+- **Downstream invoke skeleton** + pose contract screenshots
+- Remaining: full Poisson/inpaint quality, VLM Gate 0, live Cubism pose renders, GPL-external deep build execution, occlusion/flat eval sets (batch4)
+
+## Optional Batch 4 (next)
+- Eval occlusion / flat sets under `evals/`
+- Stronger CV segmentation; real AutoLive2d/psd2live import when binaries present

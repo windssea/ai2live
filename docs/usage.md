@@ -130,3 +130,12 @@ ai2live image edit --prompt … --input …
 - MCP: inspect / compose / validate / downstream / revision
 - CLI: `ai2live revision list|checkout|resume`
 - Eval: `node evals/run-hair-stress.mjs`
+
+## Design-gap progress (Batch 3)
+
+- Min-region inpaint (`minRegionInpaint`): `image_edit` → `opencv_inpaint` / telea-like → `neighbor_blend`
+- MCP §8 tools complete: `design`, `view`, `asset`, `layer`, `task`
+- Gates 0 / 1 / 5 real heuristics in `validation/quality_gates.json`
+- Downstream invoke smoke via `AI2LIVE_AUTOLIVE2D_CMD` / `AI2LIVE_PSD2LIVE_CMD` (else `invoke_skipped.json`)
+- Pose QA: parameter-contract annotated composites + `pose_qa_findings.json`
+
