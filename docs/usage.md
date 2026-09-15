@@ -123,3 +123,10 @@ ai2live image edit --prompt … --input …
 - Expressions: Edit Delta via imageEdit; dry-run ROI morph stub + provenance
 - `ai2live agent repair --apply` / `run --apply-repair` → `validation/repair_result.json`
 - Content-addressed layer hashes under `assets/sha256/` on compile
+
+## Design-gap progress (Batch 2)
+
+- Quality Gates 0–5 → `validation/quality_gates.json` (Gate 2 + Gate 4 real heuristics)
+- MCP: inspect / compose / validate / downstream / revision
+- CLI: `ai2live revision list|checkout|resume`
+- Eval: `node evals/run-hair-stress.mjs`

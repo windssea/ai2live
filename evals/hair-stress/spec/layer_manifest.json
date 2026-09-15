@@ -1,0 +1,100 @@
+{
+  "id": "man_hair_stress",
+  "version": "0.1",
+  "character_id": "char_hair_stress",
+  "canvas": {
+    "width": 128,
+    "height": 160
+  },
+  "layers": [
+    {
+      "id": "layer_back_hair",
+      "display_name": "back_hair",
+      "semantic": "BACK_HAIR",
+      "side": "CENTER",
+      "z_index": 10,
+      "group": "BACK_HAIR",
+      "canvas_bounds": {
+        "x": 0.15,
+        "y": 0.05,
+        "w": 0.7,
+        "h": 0.8
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/back_hair.png"
+      },
+      "status": "READY"
+    },
+    {
+      "id": "layer_body",
+      "display_name": "body",
+      "semantic": "BODY",
+      "side": "CENTER",
+      "z_index": 20,
+      "group": "BODY",
+      "canvas_bounds": {
+        "x": 0.3,
+        "y": 0.6,
+        "w": 0.4,
+        "h": 0.35
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/body.png"
+      },
+      "status": "READY"
+    },
+    {
+      "id": "layer_face",
+      "display_name": "face",
+      "semantic": "FACE",
+      "side": "CENTER",
+      "z_index": 40,
+      "group": "FACE",
+      "canvas_bounds": {
+        "x": 0.25,
+        "y": 0.2,
+        "w": 0.5,
+        "h": 0.5
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/face.png"
+      },
+      "status": "READY",
+      "overlap": {
+        "required_with": [
+          "layer_front_hair"
+        ],
+        "minimum_px_at_master_resolution": 8
+      }
+    },
+    {
+      "id": "layer_front_hair",
+      "display_name": "front_hair",
+      "semantic": "FRONT_HAIR",
+      "side": "CENTER",
+      "z_index": 50,
+      "group": "FRONT_HAIR",
+      "canvas_bounds": {
+        "x": 0.2,
+        "y": 0.05,
+        "w": 0.6,
+        "h": 0.4
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/front_hair.png"
+      },
+      "status": "READY"
+    }
+  ],
+  "occlusion_edges": [
+    {
+      "id": "edge_bangs_face",
+      "occluder": "layer_front_hair",
+      "occludee": "layer_face"
+    }
+  ]
+}
