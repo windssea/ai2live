@@ -75,4 +75,6 @@ export interface RunFullPipelineOptions {
   segmentDebug?: boolean;
   /** Always run agent repair even if QC passed (default: only when QC failed). */
   alwaysRepair?: boolean;
+  /** Apply deterministic repair action after plan (writes repair_result.json). */
+  applyRepair?: boolean;
 }

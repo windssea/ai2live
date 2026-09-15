@@ -76,4 +76,69 @@ describe("runRepairClosedLoop dry-run", () => {
     const hist = JSON.parse(await readFile(path.join(dir, "validation", "history.json"), "utf8"));
     expect(hist.nodes.some((n: { action: string }) => n.action === "repair_plan")).toBe(true);
   });
+
+  it("apply writes repair_result.json and history revisions", async () => {
+    const w = 32;
+    const h = 32;
+    await mkdir(path.join(dir, "spec"), { recursive: true });
+    await mkdir(path.join(dir, "layers"), { recursive: true });
+    await mkdir(path.join(dir, "design"), { recursive: true });
+    const sharp = (await import("sharp")).default;
+    const rgba = Buffer.alloc(w * h * 4, 0);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 200;
+      rgba[i + 1] = 180;
+      rgba[i + 2] = 160;
+      rgba[i + 3] = 255;
+    }
+    const png = await sharp(rgba, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
+    await writeFile(path.join(dir, "design/master_neutral.png"), png);
+    await writeFile(path.join(dir, "layers/face.png"), png);
+    await writeFile(path.join(dir, "layers/front_hair.png"), png);
+    await writeFile(
+      path.join(dir, "spec/layer_manifest.json"),
+      JSON.stringify({
+        id: "man_repair",
+        version: "0.1",
+        character_id: "char_repair",
+        canvas: { width: w, height: h },
+        layers: [
+          {
+            id: "layer_face",
+            display_name: "face",
+            semantic: "FACE",
+            side: "CENTER",
+            z_index: 40,
+            group: "FACE",
+            canvas_bounds: { x: 0.2, y: 0.2, w: 0.6, h: 0.5 },
+            source: { type: "user_asset", asset_path: "layers/face.png" },
+          },
+          {
+            id: "layer_hair",
+            display_name: "front_hair",
+            semantic: "FRONT_HAIR",
+            side: "CENTER",
+            z_index: 50,
+            group: "FRONT_HAIR",
+            canvas_bounds: { x: 0.15, y: 0.05, w: 0.7, h: 0.3 },
+            source: { type: "user_asset", asset_path: "layers/front_hair.png" },
+          },
+        ],
+      })
+    );
+
+    const ctx = createAgentContext(dir, { providerId: "grok" });
+    const { plan, repairResultPath, historyHead } = await runRepairClosedLoop(ctx, {
+      apply: true,
+    });
+    expect(plan.applied?.some((a) => a.status === "applied")).toBe(true);
+    expect(repairResultPath).toBeTruthy();
+    const result = JSON.parse(await readFile(repairResultPath!, "utf8"));
+    expect(result.applied.length).toBeGreaterThan(0);
+    expect(result.before).toBeTruthy();
+    expect(result.after).toBeTruthy();
+    const hist2 = JSON.parse(await readFile(path.join(dir, "validation", "history.json"), "utf8"));
+    expect(hist2.nodes.some((n: { action: string }) => n.action === "repair_apply")).toBe(true);
+    expect(historyHead).toBeTruthy();
+  }, 90_000);
 });
