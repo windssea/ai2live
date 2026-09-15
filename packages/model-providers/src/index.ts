@@ -23,7 +23,7 @@ export {
 } from "./factory.js";
 export type { CreateProviderOptions } from "./factory.js";
 
-export { shapeChatPayload, extractChatText, openAICompatChat } from "./openai-compat/client.js";
+export { shapeChatPayload, extractChatText, openAICompatChat, openAICompatChatStreamingAccumulated } from "./openai-compat/client.js";
 export { dryRunChat } from "./openai-compat/dry-run.js";
 export {
   dryRunImageEdit,
@@ -47,3 +47,13 @@ export {
   buildCodexArgv,
 } from "./providers/codex.js";
 export type { CodexRunOptions, CodexInvocationStyle, BuildCodexArgvOptions } from "./providers/codex.js";
+export {
+  HttpRequestError,
+  fetchWithRetry,
+  assertOk,
+  httpTimeoutMs,
+  httpMaxRetries,
+} from "./http.js";
+
+export { runDoctor, formatDoctorReport } from "./doctor.js";
+export type { DoctorCheck, DoctorReport } from "./doctor.js";

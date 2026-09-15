@@ -4,12 +4,14 @@
  * Live path: POST {baseUrl}/images/edits (multipart) when an API key is set.
  * Dry-run: copy input PNG (or write a tiny transparent PNG) under project previews/.
  *
- * Grok/xAI may not expose /images/edits; callers can fall back to dry-run or
- * document chat+vision as a future path (see method: chat_vision_fallback).
+ * Request shape matches OpenAI Images edits (image, prompt, optional mask/model,
+ * response_format=b64_json). Grok/xAI may not expose /images/edits; callers can
+ * fall back to dry-run or document chat+vision as a future path.
  */
 import { mkdir, copyFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { isDryRun } from "../env.js";
+import { assertOk, fetchWithRetry } from "../http.js";
 import type { ImageEditRequest, ImageEditResult, ProviderId } from "../types.js";
 
 /** 1x1 transparent PNG */
@@ -48,6 +50,8 @@ export interface OpenAIImagesEditConfig {
   defaultModel: string;
   provider: ProviderId;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  maxRetries?: number;
 }
 
 /**
@@ -73,30 +77,41 @@ export async function openAICompatImageEdit(
   const { readFile } = await import("node:fs/promises");
   const imageBytes = await readFile(req.inputImagePath);
   const form = new FormData();
-  form.append("image", new Blob([new Uint8Array(imageBytes)], { type: "image/png" }), path.basename(req.inputImagePath));
+  form.append(
+    "image",
+    new Blob([new Uint8Array(imageBytes)], { type: "image/png" }),
+    path.basename(req.inputImagePath)
+  );
   form.append("prompt", req.prompt);
   form.append("model", req.model ?? cfg.defaultModel);
   form.append("response_format", "b64_json");
   if (req.maskPath) {
     const maskBytes = await readFile(req.maskPath);
-    form.append("mask", new Blob([new Uint8Array(maskBytes)], { type: "image/png" }), path.basename(req.maskPath));
-  }
-
-  const url = `${cfg.baseUrl}/images/edits`;
-  const res = await fetchFn(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${cfg.apiKey}`,
-    },
-    body: form,
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Images API edit failed (${res.status} ${res.statusText}) at ${url}: ${body.slice(0, 500)}`
+    form.append(
+      "mask",
+      new Blob([new Uint8Array(maskBytes)], { type: "image/png" }),
+      path.basename(req.maskPath)
     );
   }
+
+  const url = `${cfg.baseUrl.replace(/\/$/, "")}/images/edits`;
+  const res = await fetchWithRetry(
+    url,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: form,
+    },
+    {
+      fetchImpl: fetchFn,
+      timeoutMs: cfg.timeoutMs,
+      maxRetries: cfg.maxRetries,
+    }
+  );
+
+  await assertOk(res, url);
 
   const raw = (await res.json()) as {
     data?: Array<{ b64_json?: string; url?: string }>;
@@ -108,8 +123,12 @@ export async function openAICompatImageEdit(
   if (b64) {
     await writeFile(outputPath, Buffer.from(b64, "base64"));
   } else if (raw.data?.[0]?.url) {
-    // URL response — download if possible
-    const imgRes = await fetchFn(raw.data[0].url);
+    const imgRes = await fetchWithRetry(
+      raw.data[0].url,
+      { method: "GET" },
+      { fetchImpl: fetchFn, timeoutMs: cfg.timeoutMs, maxRetries: cfg.maxRetries }
+    );
+    await assertOk(imgRes, raw.data[0].url);
     const buf = Buffer.from(await imgRes.arrayBuffer());
     await writeFile(outputPath, buf);
   } else {

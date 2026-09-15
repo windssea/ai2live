@@ -10,6 +10,11 @@ export interface ChatCompletionRequest {
   model?: string;
   temperature?: number;
   response_format?: "text" | "json";
+  /**
+   * Optional SSE streaming. Default false (recommended for xAI/OpenAI compat).
+   * When true, the client accumulates stream deltas into one ChatCompletionResult.
+   */
+  stream?: boolean;
 }
 
 export interface ChatCompletionResult {
