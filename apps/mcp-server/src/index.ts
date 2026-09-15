@@ -3,9 +3,11 @@
  * Minimal JSON-RPC 2.0 MCP-compatible stdio server.
  *
  * DESIGN §8-oriented tools (mapped to existing packages):
- *   inspect, compose, validate, downstream, revision
+ *   inspect, design, view, asset, layer, compose, validate, downstream, revision, task
  * plus legacy: compile, providers, agent_plan
  */
+import { EXTRA_TOOLS, callExtraTool } from "./tools-extra.js";
+
 import { createInterface } from "node:readline";
 import path from "node:path";
 import { readFile, mkdir, writeFile, access } from "node:fs/promises";
@@ -41,6 +43,7 @@ const projectDirProp = {
 };
 
 export const TOOLS: ToolDef[] = [
+  ...EXTRA_TOOLS.map((t) => ({ ...t, inputSchema: { ...t.inputSchema } })),
   {
     name: "inspect",
     description:
@@ -249,9 +252,18 @@ export async function callTool(
           psdPath,
           importManifestPath,
         });
+        const { invokeAutoLive2dSmoke } = await import("@ai2live/autolive2d-adapter");
+        const { invokePsd2LiveSmoke } = await import("@ai2live/psd2live-adapter");
+        const alInvoke = await invokeAutoLive2dSmoke({ projectRoot: root, packageDir: al.out_dir });
+        const p2lInvoke = await invokePsd2LiveSmoke({
+          projectRoot: root,
+          packageDir: deep.packageResult.out_dir,
+        });
         return textResult({
           autolive2d: al.out_dir,
           psd2live_deep: deep.sessionPath,
+          autolive2d_invoke: alInvoke,
+          psd2live_invoke: p2lInvoke,
         });
       }
       case "revision": {
@@ -318,6 +330,12 @@ export async function callTool(
         await writeFile(outPath, JSON.stringify(payload, null, 2));
         return textResult({ outPath, ...payload });
       }
+      case "design":
+      case "view":
+      case "asset":
+      case "layer":
+      case "task":
+        return callExtraTool(name, args);
       default:
         return textResult({ error: `Unknown tool: ${name}` }, true);
     }

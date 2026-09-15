@@ -4,8 +4,8 @@ import path from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { compilePsd } from "@ai2live/psd-compiler";
 import { runStaticQc } from "@ai2live/qc-engine";
-import { buildAutoLive2dPackage } from "@ai2live/autolive2d-adapter";
-import { buildPsd2LivePackage, writePsd2LiveDeepSession } from "@ai2live/psd2live-adapter";
+import { buildAutoLive2dPackage, invokeAutoLive2dSmoke } from "@ai2live/autolive2d-adapter";
+import { buildPsd2LivePackage, writePsd2LiveDeepSession, invokePsd2LiveSmoke } from "@ai2live/psd2live-adapter";
 import { validateLayerManifest, validateCharacter } from "@ai2live/manifest-schema";
 import {
   HistoryStore,
@@ -201,13 +201,22 @@ program
   .action(async (projectDir: string, opts: { deep?: boolean }) => {
     const root = path.resolve(projectDir);
     const al = await buildAutoLive2dPackage({ projectRoot: root });
+    const alInvoke = await invokeAutoLive2dSmoke({ projectRoot: root, packageDir: al.out_dir });
     console.log(`autolive2d: ${al.out_dir}`);
+    console.log(`autolive2d invoke: ${alInvoke.skipped ? "skipped" : "attempted"} (${alInvoke.report_path})`);
     if (opts.deep) {
       const deep = await writePsd2LiveDeepSession({ projectRoot: root });
+      const p2lInvoke = await invokePsd2LiveSmoke({
+        projectRoot: root,
+        packageDir: deep.packageResult.out_dir,
+      });
       console.log(`psd2live deep: ${deep.sessionPath}`);
+      console.log(`psd2live invoke: ${p2lInvoke.skipped ? "skipped" : "attempted"} (${p2lInvoke.report_path})`);
     } else {
       const p2 = await buildPsd2LivePackage({ projectRoot: root });
+      const p2lInvoke = await invokePsd2LiveSmoke({ projectRoot: root, packageDir: p2.out_dir });
       console.log(`psd2live: ${p2.out_dir}`);
+      console.log(`psd2live invoke: ${p2lInvoke.skipped ? "skipped" : "attempted"} (${p2lInvoke.report_path})`);
     }
   });
 

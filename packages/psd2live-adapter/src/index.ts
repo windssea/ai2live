@@ -118,3 +118,5 @@ export async function buildPsd2LivePackage(
 }
 
 export { writePsd2LiveDeepSession, checkExternalPsd2Live } from "./deep.js";
+
+export { invokePsd2LiveSmoke, type Psd2LiveInvokeResult } from "./invoke.js";

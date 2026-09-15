@@ -30,6 +30,13 @@ describe("quality gates", () => {
     expect(report.gates).toHaveLength(6);
     const g2 = report.gates.find((g) => g.gate === "GATE_2_VISIBLE_PIXEL_FIDELITY")!;
     expect(g2.depth).toBe("implemented");
+    const g0 = report.gates.find((g) => g.gate === "GATE_0_MASTER_BINDABILITY")!;
+    expect(g0.depth).toBe("heuristic");
+    expect(typeof g0.metrics.master_coverage).toBe("number");
+    const g1 = report.gates.find((g) => g.gate === "GATE_1_LAYER_PLAN")!;
+    expect(g1.depth).toBe("heuristic");
+    const g5 = report.gates.find((g) => g.gate === "GATE_5_GENERATED_REGION")!;
+    expect(g5.depth).toBe("heuristic");
     expect(typeof g2.metrics.visible_pixel_reuse_ratio === "number" || g2.findings.length > 0).toBe(
       true
     );

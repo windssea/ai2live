@@ -241,7 +241,7 @@ describe("completeOcclusionScenarios dry-run", () => {
     });
     expect(outputs.length).toBe(3);
     for (const o of outputs) {
-      expect(o.completion_method).toBe("multi_scale_neighbor_blend");
+      expect(["neighbor_blend", "opencv_inpaint", "image_edit"]).toContain(o.completion_method);
       await access(path.join(dir, o.path));
       await access(path.join(dir, o.mask_path!));
       expect(o.prompt_hash).toMatch(/^[0-9a-f]{16}$/);

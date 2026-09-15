@@ -41,3 +41,7 @@ evals/**/psd/
 evals/**/previews/
 evals/**/layers/completions/
 evals/**/assets/
+
+# Python
+**/__pycache__/
+*.pyc

@@ -1,23 +1,25 @@
-"""ai2live image worker — HTTP endpoints for segment / inpaint stubs.
+"""ai2live image worker — HTTP endpoints for segment / min-region inpaint.
 
 Prefer stdlib http.server so no pip deps are required. If FastAPI+uvicorn
 are installed, `python -m ai2live_worker.main --fastapi` uses them instead.
 
 Endpoints:
   GET  /health
+  GET  /capabilities
   POST /segment  JSON { master_path, labels? } → stub mask metadata (+ tiny png_b64)
-  POST /inpaint  JSON { image_path, mask_path } → stub copy note (+ optional png_b64)
+  POST /inpaint  JSON { image_path, mask_path } → OpenCV TELEA/NS or telea-like fill
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
+
+from .inpaint import inpaint_capabilities, inpaint_min_region
 
 # 1x1 transparent PNG
 TINY_PNG_B64 = (
@@ -47,18 +49,14 @@ def segment_stub(master_path: str, labels: list[str] | None = None) -> dict[str,
     }
 
 
-def inpaint_stub(image_path: str, mask_path: str) -> dict[str, Any]:
-    return {
-        "method": "stub",
-        "image_path": image_path,
-        "mask_path": mask_path,
-        "png_b64": TINY_PNG_B64,
-        "note": "Stub inpaint — returns tiny PNG; real CV deferred",
-    }
-
-
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "ai2live-image-worker", "version": "0.1.0"}
+    caps = inpaint_capabilities()
+    return {
+        "status": "ok",
+        "service": "ai2live-image-worker",
+        "version": "0.2.0",
+        "capabilities": caps,
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -85,6 +83,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/health", "/"):
             self._send(200, health())
             return
+        if path == "/capabilities":
+            self._send(200, inpaint_capabilities())
+            return
         self._send(404, {"error": "not_found", "path": path})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -107,7 +108,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/inpaint":
             image = str(data.get("image_path") or data.get("imagePath") or "")
             mask = str(data.get("mask_path") or data.get("maskPath") or "")
-            self._send(200, inpaint_stub(image, mask))
+            if not image or not mask:
+                self._send(400, {"error": "image_path and mask_path required"})
+                return
+            self._send(200, inpaint_min_region(image, mask))
             return
 
         self._send(404, {"error": "not_found", "path": path})
@@ -128,11 +132,15 @@ def serve_fastapi(host: str, port: int) -> None:
             "FastAPI/uvicorn not installed. Run without --fastapi, or: pip install fastapi uvicorn"
         ) from e
 
-    app = FastAPI(title="ai2live-image-worker", version="0.1.0")
+    app = FastAPI(title="ai2live-image-worker", version="0.2.0")
 
     @app.get("/health")
     def _health() -> dict[str, Any]:
         return health()
+
+    @app.get("/capabilities")
+    def _caps() -> dict[str, Any]:
+        return inpaint_capabilities()
 
     @app.post("/segment")
     def _segment(body: dict[str, Any]) -> dict[str, Any]:
@@ -144,7 +152,7 @@ def serve_fastapi(host: str, port: int) -> None:
     def _inpaint(body: dict[str, Any]) -> dict[str, Any]:
         image = str(body.get("image_path") or body.get("imagePath") or "")
         mask = str(body.get("mask_path") or body.get("maskPath") or "")
-        return inpaint_stub(image, mask)
+        return inpaint_min_region(image, mask)
 
     print(f"ai2live image-worker listening on http://{host}:{port} (fastapi)", flush=True)
     uvicorn.run(app, host=host, port=port, log_level="info")
@@ -162,12 +170,25 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--demo",
         action="store_true",
-        help="Print stub segment result and exit (no server)",
+        help="Print stub segment + capabilities and exit (no server)",
+    )
+    parser.add_argument(
+        "--inpaint-demo",
+        nargs=2,
+        metavar=("IMAGE", "MASK"),
+        help="Run min-region inpaint offline and print method JSON (no png_b64 dump)",
     )
     args = parser.parse_args(argv)
 
     if args.demo:
-        print(json.dumps(segment_stub("design/master_neutral.png"), indent=2))
+        print(json.dumps({"segment": segment_stub("design/master_neutral.png"), "capabilities": inpaint_capabilities()}, indent=2))
+        return
+
+    if args.inpaint_demo:
+        result = inpaint_min_region(args.inpaint_demo[0], args.inpaint_demo[1])
+        slim = {k: v for k, v in result.items() if k != "png_b64"}
+        slim["png_b64_len"] = len(result.get("png_b64") or "")
+        print(json.dumps(slim, indent=2))
         return
 
     if args.fastapi:
