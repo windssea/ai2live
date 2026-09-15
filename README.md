@@ -27,6 +27,14 @@ pnpm --filter @ai2live/cli exec node dist/cli.js validate ../../examples/simple-
 pnpm compile:example && pnpm validate:example
 ```
 
+### Doctor / Studio / 分割
+
+```bash
+pnpm --filter @ai2live/cli exec node dist/cli.js doctor
+pnpm --filter @ai2live/cli exec node dist/cli.js segment ../../examples/simple-character --feather 2 --split-bilateral --debug
+pnpm --filter @ai2live/studio dev   # http://127.0.0.1:5173
+```
+
 ### 模型提供方（规划 / 诊断）
 
 ```bash
@@ -43,7 +51,7 @@ pnpm --filter @ai2live/cli exec node dist/cli.js image edit --prompt "fix" --inp
 
 ### 文档
 
-**Changelog (deepen):** Codex argv/timeout/cwd/args；Grok/OpenAI `imageEdit`；`agent repair` 闭环；MCP stdio 工具；Python image worker HTTP；`ai2live image edit`。
+**Changelog (deepen):** HTTP 重试/超时/`doctor`/`.env.example`；分割 feather/bilateral/debug/coverage；Studio Vite UI；Codex/`imageEdit`/`agent repair`/MCP/worker。
 
 
 - **[使用说明](docs/使用说明.md)** / [Usage (EN)](docs/usage.md)
@@ -77,17 +85,18 @@ pnpm compile:example
 pnpm validate:example
 ```
 
-### Providers
+### Providers / doctor / studio
 
 ```bash
 export AI2LIVE_MODEL_DRY_RUN=1
+pnpm --filter @ai2live/cli exec node dist/cli.js doctor
 pnpm --filter @ai2live/cli exec node dist/cli.js providers
-pnpm --filter @ai2live/cli exec node dist/cli.js agent plan ../../examples/simple-character
+pnpm --filter @ai2live/studio dev
 ```
 
 See [docs/usage.md](docs/usage.md) and [docs/providers.md](docs/providers.md).
 
-**Changelog (deepen):** robust Codex executor; Grok/OpenAI `imageEdit`; `agent repair` closed loop; MCP stdio tools (`compile`/`validate`/`providers`/`agent_plan`); Python image worker; `ai2live image edit` CLI.
+**Changelog (deepen):** HTTP retries/timeouts/`ai2live doctor`/`.env.example`; segmentation feather/bilateral/debug/coverage QC; Studio Vite+React UI; Codex/`imageEdit`/`agent repair`/MCP/worker.
 
 ### License
 

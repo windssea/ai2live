@@ -23,6 +23,8 @@ import {
 import {
   listProviders,
   resolveProviderId,
+  runDoctor,
+  formatDoctorReport,
   type ProviderId,
 } from "@ai2live/model-providers";
 import { editImageViaProvider } from "@ai2live/image-client";
@@ -122,13 +124,36 @@ program
 
 program
   .command("segment")
-  .description("M1: see-through / stub segmentation from master")
+  .description("M1: see-through segmentation (threshold, CC, feather, bilateral split)")
   .argument("<projectDir>")
-  .action(async (projectDir: string) => {
-    const root = path.resolve(projectDir);
-    const r = await seeThroughFromMaster({ projectRoot: root });
-    console.log(`masks=${r.masks.length} drafts=${r.outLayers.length}`);
-  });
+  .option("--feather <px>", "Soft edge radius in pixels", (v) => Number(v), 0)
+  .option("--split-bilateral", "Split LEFT/RIGHT for eyes/arms via alpha valley / midpoint")
+  .option("--debug", "Write previews/seg_debug.png collage")
+  .option("--alpha-threshold <n>", "Alpha cutoff 0-255", (v) => Number(v), 8)
+  .action(
+    async (
+      projectDir: string,
+      opts: { feather?: number; splitBilateral?: boolean; debug?: boolean; alphaThreshold?: number }
+    ) => {
+      const root = path.resolve(projectDir);
+      const r = await seeThroughFromMaster({
+        projectRoot: root,
+        feather: opts.feather ?? 0,
+        splitBilateral: Boolean(opts.splitBilateral),
+        debug: Boolean(opts.debug),
+        alphaThreshold: opts.alphaThreshold ?? 8,
+      });
+      const mean =
+        r.masks.length === 0
+          ? 0
+          : r.masks.reduce((s, m) => s + m.stats.coverage, 0) / r.masks.length;
+      console.log(
+        `masks=${r.masks.length} drafts=${r.outLayers.length} mean_coverage=${mean.toFixed(4)}`
+      );
+      console.log(`report: ${r.reportPath}`);
+      if (r.debugPath) console.log(`debug: ${r.debugPath}`);
+    }
+  );
 
 program
   .command("occlusion")
@@ -238,6 +263,26 @@ program
       process.exitCode = 1;
     }
     console.log(`unattended done passed=${qc.passed}`);
+  });
+
+program
+  .command("doctor")
+  .description("Check env keys (presence only), provider config, worker reachability — never prints secrets")
+  .option("--json", "Print machine-readable JSON report")
+  .action(async (opts: { json?: boolean }) => {
+    const report = await runDoctor();
+    if (opts.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(formatDoctorReport(report));
+    }
+    // Non-zero when active provider unconfigured (and not dry-run) or worker set but down
+    const activeBad = report.checks.find(
+      (c) => c.id === `provider.${report.active_provider}.configured`
+    );
+    if (activeBad && !activeBad.ok && !report.dry_run) process.exitCode = 1;
+    const worker = report.checks.find((c) => c.id === "worker.reachable");
+    if (worker && !worker.ok) process.exitCode = 1;
   });
 
 program

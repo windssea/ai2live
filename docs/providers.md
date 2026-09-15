@@ -21,6 +21,26 @@ ai2live agent diagnose ./examples/simple-character --provider openai
 ai2live agent repair ./examples/simple-character --provider grok --apply-stub
 ```
 
+### HTTP client hardening
+
+| Env | Purpose | Default |
+|-----|---------|---------|
+| `AI2LIVE_HTTP_TIMEOUT_MS` | Chat + Images request timeout | `60000` |
+| `AI2LIVE_HTTP_MAX_RETRIES` | Retries on 408/429/5xx + network | `2` |
+
+Optional SSE streaming: set `stream: true` on `ChatCompletionRequest` (accumulated client-side). Default is non-streaming for max xAI/OpenAI compatibility.
+
+```bash
+ai2live doctor          # keys present? provider configured? worker /health?
+cp .env.example .env    # fill secrets locally — never commit
+```
+
+Live integration test (opt-in, skipped in CI by default):
+
+```bash
+AI2LIVE_LIVE_API_TEST=1 pnpm --filter @ai2live/model-providers test
+```
+
 ### Dry-run (no API key / no network)
 
 ```bash
@@ -142,6 +162,14 @@ await provider.imageEdit?.({
 
 `ai2live` 通过 **可插拔模型层**（`@ai2live/model-providers`）接入 LLM。  
 **原则**：Agent 负责策略/诊断文案；编译、QC、哈希、PSD 命名仍走确定性代码。
+
+### 诊断与 HTTP
+
+```bash
+ai2live doctor
+# AI2LIVE_HTTP_TIMEOUT_MS / AI2LIVE_HTTP_MAX_RETRIES
+# 模板：.env.example
+```
 
 ### 切换与干跑
 

@@ -115,3 +115,11 @@ function shellSplit(input: string): string[] {
   if (cur.length) out.push(cur);
   return out;
 }
+
+/** Request timeout for OpenAI-compat HTTP (ms). Env: AI2LIVE_HTTP_TIMEOUT_MS. Default 60000. */
+export function httpTimeoutMs(): number {
+  const raw = process.env.AI2LIVE_HTTP_TIMEOUT_MS;
+  if (!raw) return 60_000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 60_000;
+}

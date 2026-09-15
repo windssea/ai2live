@@ -24,3 +24,9 @@ examples/**/masks/
 examples/**/layers/completions/
 examples/**/design/differentials/
 examples/**/validation/
+
+# studio
+apps/studio/dist-web/
+**/.ai2live-studio.json
+**/previews/seg_debug.png
+examples/**/previews/seg_debug.png
