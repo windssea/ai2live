@@ -3,14 +3,20 @@ import {
   grokApiKey,
   grokBaseUrl,
   grokDefaultModel,
+  grokImageModel,
   isDryRun,
 } from "../env.js";
 import { openAICompatChat } from "../openai-compat/client.js";
 import { dryRunChat } from "../openai-compat/dry-run.js";
+import {
+  dryRunImageEdit,
+  openAICompatImageEdit,
+} from "../openai-compat/image-edit.js";
 import type {
   ChatCompletionRequest,
   ChatCompletionResult,
   ImageEditRequest,
+  ImageEditResult,
   ModelProvider,
 } from "../types.js";
 
@@ -60,10 +66,37 @@ export function createGrokProvider(opts?: {
         raw: result.raw,
       };
     },
-    async imageEdit(_req: ImageEditRequest): Promise<{ outputPath: string }> {
-      throw new ProviderNotConfiguredError(
-        id,
-        "Grok imageEdit is not configured yet. Use a dedicated image pipeline or stub."
+    /**
+     * Image edit via OpenAI-compatible Images API when the base URL supports it.
+     * xAI may not expose /images/edits — dry-run always works; live calls may fail
+     * with a clear error (chat+vision fallback is documented, not auto-wired yet).
+     */
+    async imageEdit(req: ImageEditRequest): Promise<ImageEditResult> {
+      const key = grokApiKey();
+      if (isDryRun() || !key) {
+        if (!key && !isDryRun()) {
+          throw new ProviderNotConfiguredError(
+            id,
+            [
+              "Grok imageEdit requires AI2LIVE_GROK_API_KEY / XAI_API_KEY,",
+              "or AI2LIVE_MODEL_DRY_RUN=1 (writes/copies PNG under previews/).",
+              "Note: if xAI does not support /images/edits, use dry-run or OpenAI provider;",
+              "chat+vision fallback is planned but not auto-invoked.",
+            ].join(" ")
+          );
+        }
+        return dryRunImageEdit(req);
+      }
+
+      return openAICompatImageEdit(
+        {
+          baseUrl: grokBaseUrl(),
+          apiKey: key,
+          defaultModel: grokImageModel(),
+          provider: id,
+          fetchImpl: opts?.fetchImpl ?? req.fetchImpl,
+        },
+        req
       );
     },
   };

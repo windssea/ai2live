@@ -1,4 +1,12 @@
-import { resolveProviderId, isDryRun, grokApiKey, openaiApiKey, codexBin, grokDefaultModel, openaiDefaultModel } from "./env.js";
+import {
+  resolveProviderId,
+  isDryRun,
+  grokApiKey,
+  openaiApiKey,
+  codexBin,
+  grokDefaultModel,
+  openaiDefaultModel,
+} from "./env.js";
 import { createGrokProvider, isGrokConfigured } from "./providers/grok.js";
 import { createOpenAIProvider, isOpenAIConfigured } from "./providers/openai.js";
 import { createCodexProvider } from "./providers/codex.js";
@@ -18,7 +26,7 @@ export interface CreateProviderOptions {
   codexRunCommand?: (
     bin: string,
     args: string[],
-    opts: { cwd?: string; input: string }
+    opts: { cwd?: string; input: string; timeoutMs: number }
   ) => Promise<{ stdout: string; stderr: string; code: number }>;
 }
 
