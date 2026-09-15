@@ -291,3 +291,15 @@ a.download-psd {
 a.download-psd:hover {
   filter: brightness(1.08);
 }
+
+.state-panel, .handoff-panel {
+  border: 1px solid #3a3f55;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: #161822;
+}
+.handoff-panel { border-color: #a65; }
+.state-history { margin: 0.5rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
+.layer.selected { outline: 1px solid #6af; background: #1a2238; }
+.layer { cursor: pointer; }

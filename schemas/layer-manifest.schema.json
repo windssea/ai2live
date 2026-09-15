@@ -185,7 +185,10 @@
         "occluder": { "type": "string" },
         "occludee": { "type": "string" },
         "region_hint": { "$ref": "#/$defs/CanvasBounds" },
-        "notes": { "type": "string" }
+        "notes": { "type": "string" },
+        "motion_risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "region_mask": { "type": "string", "description": "Relative path to region mask PNG" },
+        "completion_required": { "type": "boolean" }
       }
     }
   }

@@ -86,18 +86,27 @@ function buildLayersFromTemplate(
       occluder: byKey.front_hair!,
       occludee: byKey.face!,
       notes: "Bangs over forehead",
+      motion_risk: "high",
+      completion_required: true,
+      region_mask: "masks/completion_bangs_under_face.png",
     },
     {
       id: "occ_face_backhair",
       occluder: byKey.face!,
       occludee: byKey.back_hair!,
       notes: "Face over back hair",
+      motion_risk: "medium",
+      completion_required: true,
+      region_mask: "masks/completion_face_over_back_hair.png",
     },
     {
       id: "occ_body_arm",
       occluder: byKey.body!,
       occludee: byKey.arm_l!,
       notes: "Body over arm root",
+      motion_risk: "medium",
+      completion_required: true,
+      region_mask: "masks/completion_body_over_arm_root.png",
     },
   ];
 

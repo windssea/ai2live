@@ -11,6 +11,7 @@ import {
   type ProviderId,
 } from "@ai2live/model-providers";
 import { minRegionInpaint } from "@ai2live/image-client";
+import { writeOcclusionGraph, enrichOcclusionEdges } from "./graph.js";
 import {
   buildLayeredPrompt,
   occlusionEditDelta,
@@ -411,6 +412,25 @@ export async function completeOcclusionScenarios(opts: {
       prompt_hash,
       note: painted.note,
     });
+  }
+
+  // Persist richer occlusion graph (DESIGN)
+  try {
+    const manPath = path.join(root, "spec", "layer_manifest.json");
+    const man = JSON.parse(await readFile(manPath, "utf8")) as LayerManifest;
+    const edges = enrichOcclusionEdges(man.occlusion_edges ?? []);
+    // Attach region_mask paths from this run when masks written
+    for (const o of outputs) {
+      if (!o.mask_path) continue;
+      for (const e of edges) {
+        if (e.region_mask && e.region_mask.includes(o.scenario.replace(/_/g, "_"))) {
+          e.region_mask = o.mask_path.startsWith("masks/") ? o.mask_path : o.mask_path;
+        }
+      }
+    }
+    await writeOcclusionGraph(root, edges, { characterId: man.character_id });
+  } catch {
+    /* non-fatal */
   }
 
   const reportPath = path.join(root, "layers", "completions", "occlusion_report.json");

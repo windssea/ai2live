@@ -118,15 +118,24 @@
   "occlusion_edges": [
     {
       "occluder": "layer_front_hair",
-      "occludee": "layer_face"
+      "occludee": "layer_face",
+      "motion_risk": "high",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/bangs_under_face_mask.png"
     },
     {
       "occluder": "layer_face",
-      "occludee": "layer_back_hair"
+      "occludee": "layer_back_hair",
+      "motion_risk": "high",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/bangs_under_face_mask.png"
     },
     {
       "occluder": "layer_body",
-      "occludee": "layer_arm_left"
+      "occludee": "layer_arm_left",
+      "motion_risk": "high",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/bangs_under_face_mask.png"
     }
   ]
 }

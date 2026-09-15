@@ -227,19 +227,28 @@
       "id": "occ_bang_face",
       "occluder": "layer_0191e8a0-0000-4000-8000-frhair01",
       "occludee": "layer_0191e8a0-0000-4000-8000-face00001",
-      "notes": "Bangs over forehead (M2 target)"
+      "notes": "Bangs over forehead (M2 target)",
+      "motion_risk": "high",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/bangs_under_face_mask.png"
     },
     {
       "id": "occ_face_backhair",
       "occluder": "layer_0191e8a0-0000-4000-8000-face00001",
       "occludee": "layer_0191e8a0-0000-4000-8000-backhair01",
-      "notes": "Face over back hair"
+      "notes": "Face over back hair",
+      "motion_risk": "medium",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/face_over_back_hair_mask.png"
     },
     {
       "id": "occ_body_arm",
       "occluder": "layer_0191e8a0-0000-4000-8000-body00001",
       "occludee": "layer_0191e8a0-0000-4000-8000-arml00001",
-      "notes": "Body over arm root"
+      "notes": "Body over arm root",
+      "motion_risk": "medium",
+      "completion_required": true,
+      "region_mask": "layers/completions/masks/body_over_arm_root_mask.png"
     }
   ]
 }

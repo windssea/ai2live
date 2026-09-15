@@ -75,3 +75,9 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 - **`@ai2live/mock-rig-runtime`:** mesh-ish warp pose renderer for HeadX/Y extremes; pose QA prefers it when `AI2LIVE_USE_MOCK_RIG=1` (default)
 - **Downstream mock runners:** `scripts/mock-rig/*-mock.mjs` invoked when real CMD unset + mock rig on
 
+### Batch 7
+- **Phase B text init:** `ai2live init --text "..."` → character_spec + synthetic SVG master + template layers
+- **Occlusion graph v0.2:** motion_risk, region_mask, completion_required (+ schema)
+- **History JSONL backend:** `AI2LIVE_HISTORY_BACKEND=jsonl|sqlite` → `.ai2live/history/events.jsonl` + index
+- **Studio:** state machine panel + NEEDS_REVIEW handoff + layer replace upload
+
