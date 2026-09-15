@@ -68,4 +68,9 @@ See [ROADMAP.md](../ROADMAP.md). Full design: [DESIGN.md](./DESIGN.md).
 
 ```text
 ai2live compile|validate|segment|occlusion|expressions|repair|downstream|unattended <project>
+ai2live providers
+ai2live agent plan <project> [--provider grok|openai|codex]
+ai2live agent diagnose <project> [--provider …]
 ```
+
+Model providers: `@ai2live/model-providers` (default Grok). See [providers.md](./providers.md), [usage.md](./usage.md).
