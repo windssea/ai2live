@@ -20,7 +20,9 @@
     "@ai2live/manifest-schema": "workspace:*",
     "@ai2live/history": "workspace:*",
     "@ai2live/autolive2d-adapter": "workspace:*",
-    "@ai2live/psd2live-adapter": "workspace:*"
+    "@ai2live/psd2live-adapter": "workspace:*",
+    "@ai2live/pipeline": "workspace:*",
+    "@ai2live/image-client": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
