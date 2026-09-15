@@ -42,14 +42,6 @@ pnpm compile:example
 pnpm validate:example
 ```
 
-Outputs (among others):
-
-- `examples/simple-character/psd/character.psd`
-- `examples/simple-character/psd/import_manifest.json`
-- `examples/simple-character/validation/report.json`
-- `examples/simple-character/builds/autolive2d/…`
-- `examples/simple-character/builds/psd2live/…`
-
 ### 4. Milestone tool commands
 
 ```bash
@@ -63,67 +55,57 @@ ai2live downstream <project> --deep
 ai2live unattended <project>    # M6 full deterministic plan
 ```
 
-(`ai2live` = `pnpm --filter @ai2live/cli exec node dist/cli.js …` after build.)
-
-### 5. Model providers (planning / diagnosis)
-
-List configuration status:
+### 5. Model providers (planning / diagnosis / repair)
 
 ```bash
 ai2live providers
-```
 
-Dry-run without API keys:
-
-```bash
 export AI2LIVE_MODEL_DRY_RUN=1
 ai2live agent plan ../../examples/simple-character
 ai2live agent diagnose ../../examples/simple-character
+ai2live agent repair ../../examples/simple-character --apply-stub
 ```
 
 Writes:
 
 - `validation/llm_plan.json`
 - `validation/llm_diagnosis.json`
+- `validation/repair_plan.json` (+ `validation/history.json` for agent repair)
 
-Real Grok (default locally):
-
-```bash
-export AI2LIVE_MODEL_PROVIDER=grok
-export AI2LIVE_GROK_API_KEY=xai-...
-ai2live agent plan ../../examples/simple-character --provider grok
-```
-
-ChatGPT / OpenAI later:
+### 6. Image edit
 
 ```bash
-export AI2LIVE_MODEL_PROVIDER=openai
-export OPENAI_API_KEY=sk-...
-ai2live agent diagnose ../../examples/simple-character --provider openai
+export AI2LIVE_MODEL_DRY_RUN=1
+ai2live image edit \
+  --prompt "fix bangs slightly" \
+  --input ../../examples/simple-character/layers/front_hair.png \
+  --project ../../examples/simple-character \
+  --provider grok
 ```
 
-Local Codex:
+Optional Python worker:
 
 ```bash
-export AI2LIVE_MODEL_PROVIDER=codex
-export AI2LIVE_CODEX_BIN=codex
-ai2live agent plan ../../examples/simple-character --provider codex
+PYTHONPATH=services/image-worker-python/src python -m ai2live_worker.main --port 8090
+export AI2LIVE_IMAGE_WORKER_URL=http://127.0.0.1:8090
 ```
 
-Full env table: [providers.md](./providers.md).
+### 7. MCP server (stdio JSON-RPC)
 
-### 6. Design reminder
+```bash
+pnpm --filter @ai2live/mcp-server exec node dist/index.js
+# tools: compile, validate, providers, agent_plan
+```
 
-**Agent = strategy; programs = geometry.**  
-UUIDs, Z-order, PSD naming, content hashes, and static QC are never delegated to the LLM. Swap Grok → OpenAI → Codex without rewriting the compile pipeline.
+Send newline-delimited JSON-RPC (`initialize`, `tools/list`, `tools/call`).
 
 ### CLI surface
 
 ```text
 ai2live compile|validate|segment|occlusion|expressions|repair|downstream|unattended <project>
 ai2live providers
-ai2live agent plan <project> [--provider grok|openai|codex] [--prompt …] [-o file]
-ai2live agent diagnose <project> [--provider …] [--prompt …] [-o file]
+ai2live agent plan|diagnose|repair <project> [--provider grok|openai|codex]
+ai2live image edit --prompt … --input … [--out …] [--provider grok|openai] [--project …]
 ```
 
-Run `ai2live --help` / `ai2live agent --help` for the live help text.
+Full env table: [providers.md](./providers.md).

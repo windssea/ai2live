@@ -37,9 +37,14 @@ export AI2LIVE_MODEL_DRY_RUN=1          # 无密钥干跑
 pnpm --filter @ai2live/cli exec node dist/cli.js providers
 pnpm --filter @ai2live/cli exec node dist/cli.js agent plan ../../examples/simple-character
 pnpm --filter @ai2live/cli exec node dist/cli.js agent diagnose ../../examples/simple-character
+pnpm --filter @ai2live/cli exec node dist/cli.js agent repair ../../examples/simple-character --apply-stub
+pnpm --filter @ai2live/cli exec node dist/cli.js image edit --prompt "fix" --input ./in.png --provider grok --project ../../examples/simple-character
 ```
 
 ### 文档
+
+**Changelog (deepen):** Codex argv/timeout/cwd/args；Grok/OpenAI `imageEdit`；`agent repair` 闭环；MCP stdio 工具；Python image worker HTTP；`ai2live image edit`。
+
 
 - **[使用说明](docs/使用说明.md)** / [Usage (EN)](docs/usage.md)
 - **[模型提供方配置](docs/providers.md)** — Grok / OpenAI / Codex、环境变量、干跑
@@ -81,6 +86,8 @@ pnpm --filter @ai2live/cli exec node dist/cli.js agent plan ../../examples/simpl
 ```
 
 See [docs/usage.md](docs/usage.md) and [docs/providers.md](docs/providers.md).
+
+**Changelog (deepen):** robust Codex executor; Grok/OpenAI `imageEdit`; `agent repair` closed loop; MCP stdio tools (`compile`/`validate`/`providers`/`agent_plan`); Python image worker; `ai2live image edit` CLI.
 
 ### License
 
