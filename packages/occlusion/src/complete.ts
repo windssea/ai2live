@@ -11,6 +11,10 @@ import {
   type ProviderId,
 } from "@ai2live/model-providers";
 import { minRegionInpaint } from "@ai2live/image-client";
+import {
+  buildLayeredPrompt,
+  occlusionEditDelta,
+} from "@ai2live/prompt-layers";
 
 export type OcclusionScenario = "bangs_under_face" | "face_over_back_hair" | "body_over_arm_root";
 
@@ -237,16 +241,9 @@ export function neighborBlendComplete(opts: {
 }
 
 function promptForScenario(scenario: OcclusionScenario): string {
-  const base =
-    "Edit Delta only: keep character identity, palette, and line style. Fill ONLY the masked hidden region. Do not move or redraw visible pixels.";
-  switch (scenario) {
-    case "bangs_under_face":
-      return `${base} Complete forehead/face skin under bangs occlusion.`;
-    case "face_over_back_hair":
-      return `${base} Complete back hair strands hidden under the face silhouette.`;
-    case "body_over_arm_root":
-      return `${base} Complete arm-root / shoulder join hidden under the body layer.`;
-  }
+  return buildLayeredPrompt({
+    editDelta: occlusionEditDelta(scenario),
+  }).combined;
 }
 
 function hashPrompt(prompt: string): string {

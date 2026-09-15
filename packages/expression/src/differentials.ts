@@ -12,6 +12,10 @@ import {
   type ProviderId,
 } from "@ai2live/model-providers";
 import { minRegionInpaint } from "@ai2live/image-client";
+import {
+  buildLayeredPrompt,
+  expressionEditDelta,
+} from "@ai2live/prompt-layers";
 
 export type ExpressionKind = "mouth_open" | "eye_close" | "smile" | "special_eye";
 
@@ -40,18 +44,9 @@ export interface ExpressionDifferentialResult {
 }
 
 function editDeltaPrompt(kind: ExpressionKind): string {
-  const lock =
-    "Edit Delta: keep full-character identity, hairstyle, outfit, and proportions. Change ONLY the named facial ROI. Do not regenerate the whole image.";
-  switch (kind) {
-    case "mouth_open":
-      return `${lock} Open the mouth to a natural maximum speaking pose; keep teeth/tongue consistent with style.`;
-    case "eye_close":
-      return `${lock} Close both eyes with natural lashes; keep brows and face unchanged.`;
-    case "smile":
-      return `${lock} Soft smile on the mouth only; eyes stay open and identity-locked.`;
-    case "special_eye":
-      return `${lock} Special-eye highlight/color shift on irises only; keep eye shape.`;
-  }
+  return buildLayeredPrompt({
+    editDelta: expressionEditDelta(kind),
+  }).combined;
 }
 
 function hashPrompt(prompt: string): string {
