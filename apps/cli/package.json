@@ -30,7 +30,9 @@
     "@ai2live/image-client": "workspace:*",
     "@ai2live/pipeline": "workspace:*",
     "@ai2live/layer-ops": "workspace:*",
-    "@ai2live/prompt-layers": "workspace:*"
+    "@ai2live/prompt-layers": "workspace:*",
+    "@ai2live/state-machine": "workspace:*",
+    "@ai2live/vision-review": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

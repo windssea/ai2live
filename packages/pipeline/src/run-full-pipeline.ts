@@ -21,6 +21,7 @@ import {
   type ProviderId,
 } from "@ai2live/model-providers";
 import { bootstrapProjectFromImage, promoteSegmentDrafts } from "./bootstrap.js";
+import { advanceFromPipelineStep } from "@ai2live/state-machine";
 import type {
   PipelineEvent,
   PipelineResult,
@@ -235,6 +236,13 @@ export async function runFullPipeline(
         data: result.data,
       };
       steps.push(rec);
+      try {
+        await advanceFromPipelineStep(root, id, status, {
+          qcPassed: id === "qc" ? qcPassed : undefined,
+        });
+      } catch {
+        /* state machine best-effort */
+      }
       emit(onEvent, {
         type: "step_end",
         step: id,
@@ -251,6 +259,13 @@ export async function runFullPipeline(
         message,
       };
       steps.push(rec);
+      try {
+        await advanceFromPipelineStep(root, id, rec.status, {
+          qcPassed: id === "qc" ? false : undefined,
+        });
+      } catch {
+        /* state machine best-effort */
+      }
       emit(onEvent, { type: "error", step: id, message, data: rec });
       emit(onEvent, { type: "step_end", step: id, message, data: rec });
       if (!options?.soft) {
@@ -367,7 +382,10 @@ export async function runFullPipeline(
 
     // 6. static QC
     await runStep("qc", async () => {
-      const report = await runStaticQc({ projectRoot: root });
+      const report = await runStaticQc({
+        projectRoot: root,
+        visionReview: Boolean(opts.visionReview),
+      });
       qcPassed = report.passed;
       artifacts.qcReport = path.join(root, "validation", "report.json");
       if (!report.passed) {
@@ -387,7 +405,10 @@ export async function runFullPipeline(
     // 7. pose grid + diagnose
     await runStep("pose", async () => {
       const grid = await renderPoseGridStub({ projectRoot: root });
-      const diag = await diagnosePoseGrid({ projectRoot: root });
+      const diag = await diagnosePoseGrid({
+        projectRoot: root,
+        visionReview: Boolean(opts.visionReview),
+      });
       artifacts.diagnosis = path.join(root, "validation", "diagnosis.json");
       return {
         message: `shots=${grid.shots.length} findings=${diag.findings.length}`,

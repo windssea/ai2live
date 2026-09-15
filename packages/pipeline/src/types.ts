@@ -77,4 +77,6 @@ export interface RunFullPipelineOptions {
   alwaysRepair?: boolean;
   /** Apply deterministic repair action after plan (writes repair_result.json). */
   applyRepair?: boolean;
+  /** Optional DESIGN §16 dual-judge vision review on QC / pose. */
+  visionReview?: boolean;
 }
