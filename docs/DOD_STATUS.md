@@ -3,6 +3,9 @@
 Auto/manual checklist mapped from `docs/DESIGN.md` §26 DoD + roadmap gates.
 Updated: 2026-09-15 (batch9).
 
+
+标准遗留问题清单：[`遗留问题.md`](./遗留问题.md)。使用说明：[`使用说明.md`](./使用说明.md)。
+
 Legend: **DONE** | **PARTIAL** | **MISSING** | **EXTERNAL** (blocked on Cubism / psd2live / AutoLive2d binaries)
 
 | # | Item | Status | Evidence |
