@@ -12,9 +12,9 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint --if-present",
-    "ai2live": "pnpm --filter @ai2live/cli exec ai2live",
-    "compile:example": "pnpm --filter @ai2live/cli exec ai2live compile ../../examples/simple-character",
-    "validate:example": "pnpm --filter @ai2live/cli exec ai2live validate ../../examples/simple-character"
+    "ai2live": "node ./apps/cli/dist/cli.js",
+    "compile:example": "node ./apps/cli/dist/cli.js compile ./examples/simple-character",
+    "validate:example": "node ./apps/cli/dist/cli.js validate ./examples/simple-character"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

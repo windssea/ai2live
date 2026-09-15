@@ -30,3 +30,7 @@ apps/studio/dist-web/
 **/.ai2live-studio.json
 **/previews/seg_debug.png
 examples/**/previews/seg_debug.png
+
+# pipeline first-class PSD exports
+exports/
+examples/**/exports/

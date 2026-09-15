@@ -277,13 +277,34 @@ async function executeRun(
   });
 
   if (!jsonEvents) {
+    const psdPrimary = result.artifacts.psdExport || result.artifacts.psd;
+    console.log("");
+    console.log("=== PSD（主产物 / primary deliverable）===");
+    if (psdPrimary) {
+      console.log(`PSD: ${psdPrimary}`);
+    } else {
+      console.log("PSD: (not produced — compile did not complete)");
+    }
+    if (
+      result.artifacts.psd &&
+      result.artifacts.psdExport &&
+      result.artifacts.psd !== result.artifacts.psdExport
+    ) {
+      console.log(`PSD (working copy): ${result.artifacts.psd}`);
+    }
+    if (result.artifacts.importManifest) {
+      console.log(`import_manifest: ${result.artifacts.importManifest}`);
+    }
+    console.log("---");
     console.log(`pipeline report: ${result.reportPath}`);
     console.log(`passed=${result.passed} provider=${result.provider} dryRun=${result.dryRun}`);
-    if (result.artifacts.psd) console.log(`psd: ${result.artifacts.psd}`);
     if (result.artifacts.autolive2d) console.log(`autolive2d: ${result.artifacts.autolive2d}`);
     if (result.artifacts.psd2liveDeep) console.log(`psd2live: ${result.artifacts.psd2liveDeep}`);
   }
-  if (!result.passed) process.exitCode = 1;
+  // Avoid dangling promise / pnpm-exec printing "undefined" on failure paths
+  if (!result.passed) {
+    process.exitCode = 1;
+  }
 }
 
 attachRunFlags(
@@ -293,6 +314,7 @@ attachRunFlags(
     .argument("<projectDir>", "Project directory (created/used with --from-image)")
 ).action(async (projectDir: string, opts) => {
   await executeRun(projectDir, opts);
+  return;
 });
 
 attachRunFlags(
@@ -302,6 +324,7 @@ attachRunFlags(
     .argument("<projectDir>", "Project directory")
 ).action(async (projectDir: string, opts) => {
   await executeRun(projectDir, opts);
+  return;
 });
 
 program
@@ -546,7 +569,16 @@ image
   );
 
 
-program.parseAsync(process.argv).catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  try {
+    // pnpm run <script> -- <args> may forward a literal "--"; strip it so commander sees the subcommand
+    const argv = process.argv.slice();
+    if (argv[2] === "--") argv.splice(2, 1);
+    await program.parseAsync(argv);
+  } catch (err) {
+    console.error(err);
+    process.exitCode = 1;
+  }
+}
+
+void main();

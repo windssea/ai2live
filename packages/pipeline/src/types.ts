@@ -61,7 +61,7 @@ export interface RunFullPipelineOptions {
   projectRoot: string;
   provider?: ProviderChoice;
   dryRun?: boolean;
-  /** Skip individual steps (bootstrap skipped unless fromImage is set). */
+  /** Skip individual steps (bootstrap skipped unless fromImage is set). `compile` is never skippable. */
   skip?: Partial<Record<StepId, boolean>>;
   onEvent?: (e: PipelineEvent) => void;
   signal?: AbortSignal;
