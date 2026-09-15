@@ -13,7 +13,17 @@ import { completeOcclusionScenarios } from "@ai2live/occlusion";
 import { generateExpressionDifferentials } from "@ai2live/expression";
 import { renderPoseGridStub, diagnosePoseGrid, runRepairLoopStub } from "@ai2live/repair";
 import { createBudget, writeHandoff, DEFAULT_RETRY } from "@ai2live/product";
-import { defaultUnattendedPlan, createAgentContext } from "@ai2live/agent-runtime";
+import {
+  defaultUnattendedPlan,
+  createAgentContext,
+  runPlannerChat,
+  runDiagnoseChat,
+} from "@ai2live/agent-runtime";
+import {
+  listProviders,
+  resolveProviderId,
+  type ProviderId,
+} from "@ai2live/model-providers";
 
 const program = new Command();
 program.name("ai2live").description("AI Live2D Asset Compiler CLI").version("0.1.0");
@@ -180,7 +190,7 @@ program
     const ctx = createAgentContext(root);
     const plan = defaultUnattendedPlan();
     console.log(`budget max_usd=${ctx.budget.max_usd} retry=${DEFAULT_RETRY.max_attempts}`);
-    console.log(`plan steps=${plan.length}`);
+    console.log(`plan steps=${plan.length} provider=${ctx.provider.id}`);
 
     await seeThroughFromMaster({ projectRoot: root });
     await completeOcclusionScenarios({ projectRoot: root });
@@ -207,6 +217,7 @@ program
         {
           passed: qc.passed,
           plan,
+          provider: ctx.provider.id,
           budget: createBudget(),
           retry: DEFAULT_RETRY,
         },
@@ -226,6 +237,123 @@ program
     }
     console.log(`unattended done passed=${qc.passed}`);
   });
+
+program
+  .command("providers")
+  .description("List model providers and whether they are configured")
+  .action(() => {
+    const active = resolveProviderId();
+    const rows = listProviders();
+    console.log(`Active default (AI2LIVE_MODEL_PROVIDER): ${active}`);
+    console.log("");
+    for (const p of rows) {
+      const mark = p.configured ? "yes" : "no";
+      const star = p.id === active ? "*" : " ";
+      console.log(
+        `${star} ${p.id.padEnd(8)} configured=${mark.padEnd(3)} kind=${p.kind} model=${p.defaultModel ?? "-"}`
+      );
+    }
+    console.log("");
+    console.log("Switch: export AI2LIVE_MODEL_PROVIDER=grok|openai|codex");
+    console.log("Dry-run: export AI2LIVE_MODEL_DRY_RUN=1");
+    console.log("Docs: docs/providers.md");
+  });
+
+const agent = program.command("agent").description("LLM planning / diagnosis (pluggable providers)");
+
+agent
+  .command("plan")
+  .description("Call LLM (or dry-run) to produce/augment plan JSON for a project")
+  .argument("<projectDir>", "Project directory")
+  .option("--provider <id>", "grok | openai | codex (default: AI2LIVE_MODEL_PROVIDER or grok)")
+  .option("--prompt <text>", "Extra user goals for the planner")
+  .option("-o, --out <file>", "Write plan JSON to this path (default: validation/llm_plan.json)")
+  .action(
+    async (
+      projectDir: string,
+      opts: { provider?: string; prompt?: string; out?: string }
+    ) => {
+      const root = path.resolve(projectDir);
+      const providerId = resolveProviderId(opts.provider) as ProviderId;
+      const ctx = createAgentContext(root, { providerId });
+      console.log(`Planning with provider=${ctx.provider.id} project=${root}`);
+
+      try {
+        const { plan, result, parsed } = await runPlannerChat(ctx, {
+          userPrompt: opts.prompt,
+        });
+        const outPath = path.resolve(opts.out ?? path.join(root, "validation", "llm_plan.json"));
+        await mkdir(path.dirname(outPath), { recursive: true });
+        const payload = {
+          provider: result.provider,
+          model: result.model,
+          plan,
+          parsed,
+          raw_text: result.text,
+        };
+        await writeFile(outPath, JSON.stringify(payload, null, 2));
+        console.log(`Wrote ${outPath}`);
+        console.log(`plan steps=${plan.length}`);
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exitCode = 1;
+      }
+    }
+  );
+
+agent
+  .command("diagnose")
+  .description("Feed validation report to LLM for repair suggestions → validation/llm_diagnosis.json")
+  .argument("<projectDir>", "Project directory")
+  .option("--provider <id>", "grok | openai | codex")
+  .option("--prompt <text>", "Extra notes for the diagnoser")
+  .option("-o, --out <file>", "Output path (default: validation/llm_diagnosis.json)")
+  .action(
+    async (
+      projectDir: string,
+      opts: { provider?: string; prompt?: string; out?: string }
+    ) => {
+      const root = path.resolve(projectDir);
+      const providerId = resolveProviderId(opts.provider) as ProviderId;
+      const ctx = createAgentContext(root, { providerId });
+
+      let validationSummary: unknown = { note: "no validation/report.json found" };
+      const reportPath = path.join(root, "validation", "report.json");
+      try {
+        validationSummary = JSON.parse(await readFile(reportPath, "utf8"));
+      } catch {
+        try {
+          const diagPath = path.join(root, "validation", "diagnosis.json");
+          validationSummary = JSON.parse(await readFile(diagPath, "utf8"));
+        } catch {
+          /* keep stub */
+        }
+      }
+
+      console.log(`Diagnosing with provider=${ctx.provider.id} project=${root}`);
+      try {
+        const { result, parsed } = await runDiagnoseChat(ctx, {
+          validationSummary,
+          userPrompt: opts.prompt,
+        });
+        const outPath = path.resolve(
+          opts.out ?? path.join(root, "validation", "llm_diagnosis.json")
+        );
+        await mkdir(path.dirname(outPath), { recursive: true });
+        const payload = {
+          provider: result.provider,
+          model: result.model,
+          diagnosis: parsed,
+          raw_text: result.text,
+        };
+        await writeFile(outPath, JSON.stringify(payload, null, 2));
+        console.log(`Wrote ${outPath}`);
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exitCode = 1;
+      }
+    }
+  );
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);
