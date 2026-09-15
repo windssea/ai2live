@@ -41,6 +41,9 @@ importers:
       '@ai2live/history':
         specifier: workspace:*
         version: link:../../packages/history
+      '@ai2live/image-client':
+        specifier: workspace:*
+        version: link:../../packages/image-client
       '@ai2live/manifest-schema':
         specifier: workspace:*
         version: link:../../packages/manifest-schema
@@ -84,9 +87,24 @@ importers:
 
   apps/mcp-server:
     dependencies:
+      '@ai2live/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@ai2live/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@ai2live/manifest-schema':
+        specifier: workspace:*
+        version: link:../../packages/manifest-schema
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../../packages/model-providers
+      '@ai2live/psd-compiler':
+        specifier: workspace:*
+        version: link:../../packages/psd-compiler
+      '@ai2live/qc-engine':
+        specifier: workspace:*
+        version: link:../../packages/qc-engine
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -94,6 +112,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.2)
 
   apps/studio: {}
 
@@ -186,6 +207,10 @@ importers:
         version: 2.1.9(@types/node@22.20.2)
 
   packages/image-client:
+    dependencies:
+      '@ai2live/model-providers':
+        specifier: workspace:*
+        version: link:../model-providers
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
