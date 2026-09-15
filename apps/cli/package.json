@@ -28,7 +28,9 @@
     "@ai2live/model-providers": "workspace:*",
     "commander": "^12.1.0",
     "@ai2live/image-client": "workspace:*",
-    "@ai2live/pipeline": "workspace:*"
+    "@ai2live/pipeline": "workspace:*",
+    "@ai2live/layer-ops": "workspace:*",
+    "@ai2live/prompt-layers": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

@@ -31,6 +31,9 @@ import {
 } from "@ai2live/model-providers";
 import { editImageViaProvider } from "@ai2live/image-client";
 import { runFullPipeline, type StepId } from "@ai2live/pipeline";
+import { replaceLayerPng } from "@ai2live/layer-ops";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const program = new Command();
 program.name("ai2live").description("AI Live2D Asset Compiler CLI").version("0.1.0");
@@ -646,6 +649,75 @@ revision
       console.error((err as Error).message);
       process.exitCode = 1;
     }
+  });
+
+
+
+const layer = program.command("layer").description("Human layer ops (replace-and-continue)");
+
+layer
+  .command("replace")
+  .description("Replace a layer PNG by id, update manifest + history; then compile/run to continue")
+  .argument("<projectDir>", "Project directory")
+  .argument("<layerId>", "Layer id from layer_manifest.json")
+  .requiredOption("--png <path>", "Replacement PNG path")
+  .option("--dest <rel>", "Optional relative dest path under project")
+  .action(
+    async (
+      projectDir: string,
+      layerId: string,
+      opts: { png: string; dest?: string }
+    ) => {
+      try {
+        const result = await replaceLayerPng({
+          projectRoot: path.resolve(projectDir),
+          layerId,
+          pngPath: path.resolve(opts.png),
+          destRel: opts.dest,
+        });
+        console.log(`replaced ${result.layerId}`);
+        console.log(`asset_path=${result.asset_path}`);
+        console.log(`sha256=${result.sha256}`);
+        if (result.content_addressed_path) {
+          console.log(`content_addressed=${result.content_addressed_path}`);
+        }
+        console.log(`history_head=${result.history_head ?? "(none)"}`);
+        console.log("continue with: ai2live compile <project>  OR  ai2live run <project>");
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exitCode = 1;
+      }
+    }
+  );
+
+program
+  .command("eval")
+  .description("Run eval suites (hair-stress + occlusion-stress + flat-image) → evals/last-report.json")
+  .option("--suite <id>", "hair-stress | occlusion-stress | flat-image | all", "all")
+  .action(async (opts: { suite?: string }) => {
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+    const suite = opts.suite ?? "all";
+    const script =
+      suite === "all"
+        ? path.join(repoRoot, "evals/run-all.mjs")
+        : suite === "hair-stress"
+          ? path.join(repoRoot, "evals/run-hair-stress.mjs")
+          : suite === "occlusion-stress"
+            ? path.join(repoRoot, "evals/run-occlusion-stress.mjs")
+            : suite === "flat-image"
+              ? path.join(repoRoot, "evals/run-flat-image.mjs")
+              : null;
+    if (!script) {
+      console.error(`Unknown suite: ${suite}`);
+      process.exitCode = 1;
+      return;
+    }
+    const r = spawnSync(process.execPath, [script], {
+      stdio: "inherit",
+      cwd: repoRoot,
+      env: { ...process.env, AI2LIVE_MODEL_DRY_RUN: "1" },
+    });
+    process.exitCode = r.status ?? 1;
   });
 
 
