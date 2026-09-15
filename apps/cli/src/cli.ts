@@ -278,7 +278,9 @@ function attachRunFlags(cmd: Command) {
     .option("--apply-repair", "After repair plan, apply deterministic repair + re-QC")
     .option("--json-events", "Emit NDJSON PipelineEvents to stdout (for Studio)")
     .option("--feather <px>", "Segment feather radius", (v) => Number(v), 2)
-    .option("--no-split-bilateral", "Disable bilateral eye/arm split");
+    .option("--no-split-bilateral", "Disable bilateral eye/arm split")
+    .option("--no-vision-review", "Disable dual-judge vision review (enabled by default on run)")
+    .option("--max-repair-attempts <n>", "Stop repair loop after N attempts", (v) => Number(v), 3);
 }
 
 async function executeRun(
@@ -298,8 +300,12 @@ async function executeRun(
     jsonEvents?: boolean;
     feather?: number;
     splitBilateral?: boolean;
+    noVisionReview?: boolean;
+    maxRepairAttempts?: number;
   }
 ) {
+  process.env.AI2LIVE_USE_MOCK_RIG = process.env.AI2LIVE_USE_MOCK_RIG ?? "1";
+
   const root = path.resolve(projectDir);
   const skip: Partial<Record<StepId, boolean>> = {};
   if (opts.skipSegment) skip.segment = true;
@@ -320,6 +326,8 @@ async function executeRun(
     applyRepair: Boolean(opts.applyRepair),
     feather: opts.feather,
     splitBilateral: opts.splitBilateral,
+    visionReview: !opts.noVisionReview,
+    maxRepairAttempts: opts.maxRepairAttempts,
     onEvent: (e) => {
       if (jsonEvents) {
         process.stdout.write(JSON.stringify(e) + "\n");

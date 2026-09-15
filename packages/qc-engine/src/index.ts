@@ -12,3 +12,9 @@ export {
   type QualityGatesReport,
 } from "./gates.js";
 export { ANIME_UPPER_BODY_REQUIRED_SEMANTICS } from "./gate-semantics.js";
+
+export {
+  runGate7RigExtremePose,
+  runGate8Editability,
+  type EditabilityChecklistItem,
+} from "./gate78.js";

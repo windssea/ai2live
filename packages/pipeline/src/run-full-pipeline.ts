@@ -9,7 +9,13 @@ import { runStaticQc } from "@ai2live/qc-engine";
 import { renderPoseGridStub, diagnosePoseGrid } from "@ai2live/repair";
 import { buildAutoLive2dPackage, invokeAutoLive2dSmoke } from "@ai2live/autolive2d-adapter";
 import { writePsd2LiveDeepSession, invokePsd2LiveSmoke } from "@ai2live/psd2live-adapter";
-import { writeHandoff } from "@ai2live/product";
+import {
+  writeHandoff,
+  createBudget,
+  charge,
+  StopConditionTracker,
+  DEFAULT_STOP_POLICY,
+} from "@ai2live/product";
 import {
   createAgentContext,
   runRepairClosedLoop,
@@ -182,6 +188,9 @@ export async function runFullPipeline(
   opts: RunFullPipelineOptions
 ): Promise<PipelineResult> {
   const root = path.resolve(opts.projectRoot);
+  if (process.env.AI2LIVE_USE_MOCK_RIG == null) {
+    process.env.AI2LIVE_USE_MOCK_RIG = "1";
+  }
   const dryRun = Boolean(opts.dryRun);
   const provider = (opts.provider ?? resolveProviderId()) as ProviderId;
   const skip: Partial<Record<StepId, boolean>> = { ...(opts.skip ?? {}) };
@@ -384,7 +393,7 @@ export async function runFullPipeline(
     await runStep("qc", async () => {
       const report = await runStaticQc({
         projectRoot: root,
-        visionReview: Boolean(opts.visionReview),
+        visionReview: opts.visionReview !== false,
       });
       qcPassed = report.passed;
       artifacts.qcReport = path.join(root, "validation", "report.json");
@@ -407,7 +416,7 @@ export async function runFullPipeline(
       const grid = await renderPoseGridStub({ projectRoot: root });
       const diag = await diagnosePoseGrid({
         projectRoot: root,
-        visionReview: Boolean(opts.visionReview),
+        visionReview: opts.visionReview !== false,
       });
       artifacts.diagnosis = path.join(root, "validation", "diagnosis.json");
       return {
@@ -423,21 +432,100 @@ export async function runFullPipeline(
       skip.repair = true;
     }
     await runStep("repair", async () => {
+      // Ensure mock rig on by default for pose/repair paths
+      if (process.env.AI2LIVE_USE_MOCK_RIG == null) {
+        process.env.AI2LIVE_USE_MOCK_RIG = "1";
+      }
+      const maxAttempts = opts.maxRepairAttempts ?? DEFAULT_STOP_POLICY.max_attempts;
+      const flatRounds = opts.flatRoundsToStop ?? DEFAULT_STOP_POLICY.flat_rounds_to_stop;
+      let budget = createBudget({ max_repair_iters: maxAttempts });
+      const tracker = new StopConditionTracker(
+        {
+          max_attempts: maxAttempts,
+          min_metric_delta: DEFAULT_STOP_POLICY.min_metric_delta,
+          flat_rounds_to_stop: flatRounds,
+        },
+        budget
+      );
       const ctx = createAgentContext(root, { providerId: provider });
-      const { plan, planPath, repairResultPath } = await runRepairClosedLoop(ctx, {
-        applyStub: dryRun && !opts.applyRepair,
-        apply: Boolean(opts.applyRepair),
-        validationSummary: undefined,
-      });
-      artifacts.repairPlan = planPath;
-      if (repairResultPath) artifacts.repairResult = repairResultPath;
+      let lastPlanPath: string | undefined;
+      let lastRepairResult: string | undefined;
+      let lastPlan: { recommended_repairs: unknown[]; applied?: unknown } | undefined;
+      let stopInfo: unknown = null;
+      let rounds = 0;
+
+      while (true) {
+        rounds++;
+        const { plan, planPath, repairResultPath, qcAfter } = await runRepairClosedLoop(ctx, {
+          applyStub: dryRun && !opts.applyRepair,
+          apply: Boolean(opts.applyRepair),
+          validationSummary: undefined,
+        });
+        lastPlan = plan;
+        lastPlanPath = planPath;
+        if (repairResultPath) lastRepairResult = repairResultPath;
+
+        try {
+          budget = charge(budget, "repair", 0.01);
+          tracker.budget = budget;
+        } catch (err) {
+          stopInfo = {
+            reason: "budget_exceeded",
+            message: (err as Error).message,
+            attempt: rounds,
+          };
+          break;
+        }
+
+        // Metric: QC pass → 1; else 1 - error_ratio from findings
+        let metric = 0.5;
+        const qc = qcAfter as { passed?: boolean; findings?: Array<{ severity?: string }> } | undefined;
+        if (qc) {
+          if (qc.passed) metric = 1;
+          else {
+            const errs = (qc.findings ?? []).filter((f) => f.severity === "ERROR").length;
+            const n = Math.max(1, (qc.findings ?? []).length);
+            metric = Math.max(0, 1 - errs / n);
+          }
+        } else if (plan.recommended_repairs.length === 0) {
+          metric = 0.85;
+        }
+
+        const decision = tracker.record(metric, { success: Boolean(qc?.passed) });
+        stopInfo = decision;
+        if (decision.stop) break;
+        if (!opts.applyRepair) break; // plan-only: single pass
+      }
+
+      artifacts.repairPlan = lastPlanPath;
+      if (lastRepairResult) artifacts.repairResult = lastRepairResult;
+      await mkdir(path.join(root, "validation"), { recursive: true });
+      await writeFile(
+        path.join(root, "validation", "stop_conditions.json"),
+        JSON.stringify(
+          {
+            version: "0.1",
+            policy: {
+              max_attempts: maxAttempts,
+              flat_rounds_to_stop: flatRounds,
+            },
+            budget,
+            stop: stopInfo,
+            rounds,
+          },
+          null,
+          2
+        ) + "\n"
+      );
       return {
-        message: `repairs=${plan.recommended_repairs.length} apply=${Boolean(opts.applyRepair)}`,
+        message: `repairs=${lastPlan?.recommended_repairs.length ?? 0} apply=${Boolean(opts.applyRepair)} stop=${(stopInfo as { reason?: string })?.reason ?? "n/a"}`,
         data: {
-          planPath,
-          repairs: plan.recommended_repairs.length,
-          applied: plan.applied,
-          repairResultPath,
+          planPath: lastPlanPath,
+          repairs: lastPlan?.recommended_repairs.length,
+          applied: lastPlan?.applied,
+          repairResultPath: lastRepairResult,
+          stop: stopInfo,
+          rounds,
         },
       };
     });

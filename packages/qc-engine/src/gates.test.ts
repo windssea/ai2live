@@ -27,7 +27,9 @@ describe("quality gates", () => {
     const report = await runQualityGates({ projectRoot: example });
     expect(report.gates.map((g) => g.gate)).toContain("GATE_2_VISIBLE_PIXEL_FIDELITY");
     expect(report.gates.map((g) => g.gate)).toContain("GATE_4_OVERLAP_SUFFICIENCY");
-    expect(report.gates).toHaveLength(6);
+    expect(report.gates.map((g) => g.gate)).toContain("GATE_7_RIG_EXTREME_POSE");
+    expect(report.gates.map((g) => g.gate)).toContain("GATE_8_EDITABILITY");
+    expect(report.gates).toHaveLength(8);
     const g2 = report.gates.find((g) => g.gate === "GATE_2_VISIBLE_PIXEL_FIDELITY")!;
     expect(g2.depth).toBe("implemented");
     const g0 = report.gates.find((g) => g.gate === "GATE_0_MASTER_BINDABILITY")!;
