@@ -39,3 +39,8 @@ pip install 'ai2live-image-worker[opencv]'  # optional worker extras
 ```
 
 See also: `docs/mock-rig.md`, `docs/DOD_STATUS.md`, `ROADMAP.md`.
+
+## 遗留问题文档
+
+标准遗留 / 外部阻塞清单（给使用与排期）：[`遗留问题.md`](./遗留问题.md)。
+使用入口：[使用说明.md](./使用说明.md)。
