@@ -46,6 +46,50 @@
       "status": "READY"
     },
     {
+      "id": "layer_arm_l",
+      "display_name": "arm_left",
+      "semantic": "ARM",
+      "side": "LEFT",
+      "z_index": 25,
+      "group": "ARMS",
+      "canvas_bounds": {
+        "x": 0.15,
+        "y": 0.65,
+        "w": 0.2,
+        "h": 0.3
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/arm_l.png"
+      },
+      "status": "READY",
+      "overlap": {
+        "required_with": [
+          "layer_body"
+        ],
+        "minimum_px_at_master_resolution": 4
+      }
+    },
+    {
+      "id": "layer_arm_r",
+      "display_name": "arm_right",
+      "semantic": "ARM",
+      "side": "RIGHT",
+      "z_index": 25,
+      "group": "ARMS",
+      "canvas_bounds": {
+        "x": 0.65,
+        "y": 0.65,
+        "w": 0.2,
+        "h": 0.3
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/arm_r.png"
+      },
+      "status": "READY"
+    },
+    {
       "id": "layer_face",
       "display_name": "face",
       "semantic": "FACE",
@@ -71,11 +115,68 @@
       }
     },
     {
+      "id": "layer_eye_l",
+      "display_name": "eye_left",
+      "semantic": "EYE",
+      "side": "LEFT",
+      "z_index": 50,
+      "group": "EYES",
+      "canvas_bounds": {
+        "x": 0.3,
+        "y": 0.35,
+        "w": 0.15,
+        "h": 0.1
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/eye_l.png"
+      },
+      "status": "READY"
+    },
+    {
+      "id": "layer_eye_r",
+      "display_name": "eye_right",
+      "semantic": "EYE",
+      "side": "RIGHT",
+      "z_index": 50,
+      "group": "EYES",
+      "canvas_bounds": {
+        "x": 0.55,
+        "y": 0.35,
+        "w": 0.15,
+        "h": 0.1
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/eye_r.png"
+      },
+      "status": "READY"
+    },
+    {
+      "id": "layer_mouth",
+      "display_name": "mouth",
+      "semantic": "MOUTH",
+      "side": "CENTER",
+      "z_index": 55,
+      "group": "FACE_DETAIL",
+      "canvas_bounds": {
+        "x": 0.4,
+        "y": 0.48,
+        "w": 0.2,
+        "h": 0.1
+      },
+      "source": {
+        "type": "user_asset",
+        "asset_path": "layers/mouth.png"
+      },
+      "status": "READY"
+    },
+    {
       "id": "layer_front_hair",
       "display_name": "front_hair",
       "semantic": "FRONT_HAIR",
       "side": "CENTER",
-      "z_index": 50,
+      "z_index": 70,
       "group": "FRONT_HAIR",
       "canvas_bounds": {
         "x": 0.2,
