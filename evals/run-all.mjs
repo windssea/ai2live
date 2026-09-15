@@ -39,6 +39,7 @@ async function exists(p) {
 
 process.chdir(root);
 process.env.AI2LIVE_MODEL_DRY_RUN = "1";
+process.env.AI2LIVE_USE_MOCK_RIG = process.env.AI2LIVE_USE_MOCK_RIG ?? "1";
 
 const results = [];
 for (const s of suites) {

@@ -7,6 +7,8 @@ dependencies = []
 
 [project.optional-dependencies]
 fastapi = ["fastapi", "uvicorn"]
+opencv = ["opencv-python-headless>=4.8", "numpy>=1.26"]
+worker = ["opencv-python-headless>=4.8", "numpy>=1.26", "fastapi", "uvicorn"]
 dev = ["pytest"]
 
 [project.scripts]

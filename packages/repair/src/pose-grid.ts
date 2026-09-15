@@ -22,14 +22,64 @@ function poseLabel(pose: Record<string, number>): string {
   return keys.map((k) => `${k}=${pose[k]}`).join(" ");
 }
 
+function mockRigWanted(): boolean {
+  const v = (process.env.AI2LIVE_USE_MOCK_RIG ?? "1").trim().toLowerCase();
+  return v !== "0" && v !== "false" && v !== "off" && v !== "no";
+}
+
 /**
- * Parameter-contract screenshots: annotated composites from recomposed PNG.
- * Better than empty stub when no real Live2D renderer is available.
+ * Parameter-contract screenshots: prefer mock-rig mesh-warp from layered PNGs;
+ * fall back to flat annotated composites when mock-rig disabled/unavailable.
  */
 export async function renderPoseGridStub(opts: {
   projectRoot: string;
   sourcePreview?: string;
-}): Promise<{ shots: { pose: Record<string, number>; path: string; label: string }[]; gridDir: string }> {
+}): Promise<{
+  shots: { pose: Record<string, number>; path: string; label: string }[];
+  gridDir: string;
+  kind?: string;
+}> {
+  const root = path.resolve(opts.projectRoot);
+
+  if (mockRigWanted()) {
+    try {
+      const { renderPoseGridMockRig, MOCK_RIG_DEFAULT_POSES } = await import(
+        "@ai2live/mock-rig-runtime"
+      );
+      const r = await renderPoseGridMockRig({
+        projectRoot: root,
+        poses: MOCK_RIG_DEFAULT_POSES,
+      });
+      return {
+        shots: r.shots.map((s) => ({ pose: s.pose as Record<string, number>, path: s.path, label: s.label })),
+        gridDir: r.gridDir,
+        kind: r.kind,
+      };
+    } catch (err) {
+      // fall through to flat annotate
+      await mkdir(path.join(root, "validation"), { recursive: true });
+      await writeFile(
+        path.join(root, "validation", "mock_rig_fallback.json"),
+        JSON.stringify(
+          {
+            reason: (err as Error).message,
+            fallback: "flat_annotate",
+          },
+          null,
+          2
+        )
+      );
+    }
+  }
+
+  return renderFlatAnnotatePoseGrid(opts);
+}
+
+/** Legacy flat annotate composite (pre-mock-rig). */
+async function renderFlatAnnotatePoseGrid(opts: {
+  projectRoot: string;
+  sourcePreview?: string;
+}): Promise<{ shots: { pose: Record<string, number>; path: string; label: string }[]; gridDir: string; kind: string }> {
   const root = path.resolve(opts.projectRoot);
   const gridDir = path.join(root, "validation", "pose_grid");
   await mkdir(gridDir, { recursive: true });
@@ -63,7 +113,6 @@ export async function renderPoseGridStub(opts: {
     const eyesClosed =
       pose.ParamEyeLOpen === 0 && pose.ParamEyeROpen === 0;
 
-    // Tint / shift encode the parameter contract visually
     const overlayColor =
       mouth > 0
         ? { r: 220, g: 80, b: 100, alpha: 0.35 }
@@ -85,7 +134,6 @@ export async function renderPoseGridStub(opts: {
       .raw()
       .toBuffer();
 
-    // Draw parameter badge strip at top
     const rgba = Buffer.from(shifted);
     const stripH = Math.max(18, Math.round(bh * 0.08));
     for (let y = 0; y < stripH; y++) {
@@ -98,7 +146,6 @@ export async function renderPoseGridStub(opts: {
         rgba[idx + 3] = 255;
       }
     }
-    // Side marker bars encode angle magnitude
     const barW = Math.max(4, Math.round(Math.abs(pose.ParamAngleX ?? pose.ParamAngleZ ?? 0) / 5));
     for (let y = 0; y < bh; y++) {
       for (let x = 0; x < barW; x++) {
@@ -110,7 +157,6 @@ export async function renderPoseGridStub(opts: {
       }
     }
 
-    // Compose with SVG text label (parameter contract annotation)
     const svg = Buffer.from(
       `<svg width="${bw}" height="${bh}">
         <rect x="0" y="${bh - stripH}" width="${bw}" height="${stripH}" fill="rgba(0,0,0,0.65)"/>
@@ -160,7 +206,7 @@ export async function renderPoseGridStub(opts: {
     )
   );
 
-  return { shots, gridDir };
+  return { shots, gridDir, kind: "parameter_contract_screenshots" };
 }
 
 export interface DiagnosisResult {
@@ -193,21 +239,27 @@ export async function diagnosePoseGrid(opts: {
   }
 
   let shotCount = 0;
+  let kind = "parameter_contract_screenshots";
   try {
     const contract = JSON.parse(await readFile(path.join(gridDir, "contract.json"), "utf8")) as {
       poses?: unknown[];
+      kind?: string;
     };
     shotCount = contract.poses?.length ?? 0;
+    kind = contract.kind ?? kind;
   } catch {
     shotCount = DEFAULT_POSE_GRID.length;
   }
 
+  const isMockRig = kind === "mock_mesh_warp";
   findings.push({
     id: createStableId("finding", "pose-contract"),
     severity: "INFO",
     type: "POSE_GRID_CONTRACT",
-    message: `Parameter-contract screenshots present (${shotCount}). Connect AutoLive2d/psd2live for real renders.`,
-    backend: "composite_annotation",
+    message: isMockRig
+      ? `Mock-rig mesh-warp pose grid present (${shotCount}). HeadX/Y extremes use layered warp.`
+      : `Parameter-contract screenshots present (${shotCount}). Connect AutoLive2d/psd2live for real renders.`,
+    backend: isMockRig ? "mock_mesh_warp" : "composite_annotation",
   });
   recommended_repairs.push({
     action: "expand_hidden_completion",
@@ -224,7 +276,7 @@ export async function diagnosePoseGrid(opts: {
     findings,
     recommended_repairs,
     timestamp: new Date().toISOString(),
-    pose_grid_kind: "parameter_contract_screenshots",
+    pose_grid_kind: kind,
   };
   await mkdir(path.join(root, "validation"), { recursive: true });
   await writeFile(path.join(root, "validation", "diagnosis.json"), JSON.stringify(report, null, 2));
@@ -232,10 +284,13 @@ export async function diagnosePoseGrid(opts: {
     path.join(root, "validation", "pose_qa_findings.json"),
     JSON.stringify(
       {
-        version: "0.1",
+        version: "0.2",
         findings,
         recommended_repairs,
-        note: "Pose QA without live renderer — contract composites + heuristic findings",
+        pose_grid_kind: kind,
+        note: isMockRig
+          ? "Pose QA via mock-rig mesh-warp + heuristic findings"
+          : "Pose QA without live renderer — contract composites + heuristic findings",
       },
       null,
       2
@@ -249,7 +304,7 @@ export async function diagnosePoseGrid(opts: {
         projectRoot: root,
         poseFindings: findings,
         dryRun: opts.visionReviewDryRun !== false,
-        context: `pose_qa findings=${findings.length}`,
+        context: `pose_qa findings=${findings.length} kind=${kind}`,
       });
       findings.push({
         id: createStableId("finding", "pose-dual-judge"),
@@ -262,10 +317,11 @@ export async function diagnosePoseGrid(opts: {
         path.join(root, "validation", "pose_qa_findings.json"),
         JSON.stringify(
           {
-            version: "0.1",
+            version: "0.2",
             findings,
             recommended_repairs,
             dual_judge: dual,
+            pose_grid_kind: kind,
             note: "Pose QA + optional dual-judge vision review",
           },
           null,

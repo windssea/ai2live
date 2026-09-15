@@ -1,3 +1,4 @@
+process.env.AI2LIVE_USE_MOCK_RIG = process.env.AI2LIVE_USE_MOCK_RIG ?? "1";
 #!/usr/bin/env node
 /** Smoke eval: compile + validate example. Exit 1 on QC fail. */
 import { spawnSync } from "node:child_process";

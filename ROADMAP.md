@@ -68,3 +68,10 @@ Three scenarios via `ai2live occlusion`: bangs under face, face over back hair, 
 - Live Cubism pose renders (still parameter-contract composites)
 - Real AutoLive2d/psd2live import when binaries present
 - State machine does not yet drive branching UI / human handoff automation beyond persistence + CLI
+
+### Batch 6
+- **Live VLM path:** `@ai2live/vision-review` auto-live when API keys present (unless dry-run); structured JSON schema `VLM_REVIEW_JSON_SCHEMA` / `parseVlmReviewJson`
+- **Stronger inpaint:** worker optional `[opencv]` extras; improved frontier-first telea-like; A/B helper `compareSeeThroughVsCompletion` / `runAbCompare`
+- **`@ai2live/mock-rig-runtime`:** mesh-ish warp pose renderer for HeadX/Y extremes; pose QA prefers it when `AI2LIVE_USE_MOCK_RIG=1` (default)
+- **Downstream mock runners:** `scripts/mock-rig/*-mock.mjs` invoked when real CMD unset + mock rig on
+

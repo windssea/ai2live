@@ -169,3 +169,11 @@ export {
 } from "./inpaint.js";
 
 export { readFile };
+
+export {
+  compareSeeThroughVsCompletion,
+  runAbCompare,
+  type AbMetricSample,
+  type AbRegionMetrics,
+  type AbCompareResult,
+} from "./ab-metrics.js";
