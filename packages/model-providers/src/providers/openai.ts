@@ -4,13 +4,19 @@ import {
   openaiApiKey,
   openaiBaseUrl,
   openaiDefaultModel,
+  openaiImageModel,
 } from "../env.js";
 import { openAICompatChat } from "../openai-compat/client.js";
 import { dryRunChat } from "../openai-compat/dry-run.js";
+import {
+  dryRunImageEdit,
+  openAICompatImageEdit,
+} from "../openai-compat/image-edit.js";
 import type {
   ChatCompletionRequest,
   ChatCompletionResult,
   ImageEditRequest,
+  ImageEditResult,
   ModelProvider,
 } from "../types.js";
 
@@ -60,10 +66,30 @@ export function createOpenAIProvider(opts?: {
         raw: result.raw,
       };
     },
-    async imageEdit(_req: ImageEditRequest): Promise<{ outputPath: string }> {
-      throw new ProviderNotConfiguredError(
-        id,
-        "OpenAI imageEdit is not wired yet. Stub only — set up Images API later."
+    async imageEdit(req: ImageEditRequest): Promise<ImageEditResult> {
+      const key = openaiApiKey();
+      if (isDryRun() || !key) {
+        if (!key && !isDryRun()) {
+          throw new ProviderNotConfiguredError(
+            id,
+            [
+              "OpenAI imageEdit requires OPENAI_API_KEY / AI2LIVE_OPENAI_API_KEY,",
+              "or AI2LIVE_MODEL_DRY_RUN=1 (writes/copies PNG under previews/).",
+            ].join(" ")
+          );
+        }
+        return dryRunImageEdit(req);
+      }
+
+      return openAICompatImageEdit(
+        {
+          baseUrl: openaiBaseUrl(),
+          apiKey: key,
+          defaultModel: openaiImageModel(),
+          provider: id,
+          fetchImpl: opts?.fetchImpl ?? req.fetchImpl,
+        },
+        req
       );
     },
   };

@@ -18,12 +18,14 @@ import {
   createAgentContext,
   runPlannerChat,
   runDiagnoseChat,
+  runRepairClosedLoop,
 } from "@ai2live/agent-runtime";
 import {
   listProviders,
   resolveProviderId,
   type ProviderId,
 } from "@ai2live/model-providers";
+import { editImageViaProvider } from "@ai2live/image-client";
 
 const program = new Command();
 program.name("ai2live").description("AI Live2D Asset Compiler CLI").version("0.1.0");
@@ -354,6 +356,94 @@ agent
       }
     }
   );
+
+
+agent
+  .command("repair")
+  .description("Closed loop: pose diagnose → LLM repair plan → validation/repair_plan.json (+ history)")
+  .argument("<projectDir>", "Project directory")
+  .option("--provider <id>", "grok | openai | codex")
+  .option("--prompt <text>", "Extra notes for the diagnoser")
+  .option("--apply-stub", "Record stub apply markers (no PNG mutation)")
+  .option("--skip-pose", "Skip pose grid render/diagnose before LLM plan")
+  .action(
+    async (
+      projectDir: string,
+      opts: { provider?: string; prompt?: string; applyStub?: boolean; skipPose?: boolean }
+    ) => {
+      const root = path.resolve(projectDir);
+      const providerId = resolveProviderId(opts.provider) as ProviderId;
+      const ctx = createAgentContext(root, { providerId });
+
+      let poseDiagnosis: unknown = undefined;
+      if (!opts.skipPose) {
+        const grid = await renderPoseGridStub({ projectRoot: root });
+        console.log(`pose shots=${grid.shots.length}`);
+        poseDiagnosis = await diagnosePoseGrid({ projectRoot: root });
+        console.log(
+          `pose findings=${(poseDiagnosis as { findings: unknown[] }).findings.length}`
+        );
+      }
+
+      console.log(`Repair plan with provider=${ctx.provider.id} project=${root}`);
+      try {
+        const { plan, planPath, historyHead } = await runRepairClosedLoop(ctx, {
+          userPrompt: opts.prompt,
+          applyStub: opts.applyStub,
+          poseDiagnosis,
+        });
+        console.log(`Wrote ${planPath}`);
+        console.log(`repairs=${plan.recommended_repairs.length} history_head=${historyHead}`);
+        if (opts.applyStub) {
+          console.log(`stub applied markers=${plan.applied?.length ?? 0}`);
+        }
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exitCode = 1;
+      }
+    }
+  );
+
+const image = program.command("image").description("Image edit via providers or worker");
+
+image
+  .command("edit")
+  .description("Edit an image via provider Images API (or dry-run copy/tiny PNG)")
+  .requiredOption("--prompt <text>", "Edit prompt")
+  .requiredOption("--input <path>", "Input image path")
+  .option("--out <path>", "Output path (default: <project>/previews/image_edit_*.png)")
+  .option("--mask <path>", "Optional mask path")
+  .option("--provider <id>", "grok | openai (default: AI2LIVE_MODEL_PROVIDER or grok)")
+  .option("--project <dir>", "Project root for default output under previews/")
+  .action(
+    async (opts: {
+      prompt: string;
+      input: string;
+      out?: string;
+      mask?: string;
+      provider?: string;
+      project?: string;
+    }) => {
+      const projectRoot = opts.project ? path.resolve(opts.project) : process.cwd();
+      const inputImagePath = path.resolve(opts.input);
+      const outputPath = opts.out ? path.resolve(opts.out) : undefined;
+      try {
+        const result = await editImageViaProvider({
+          prompt: opts.prompt,
+          inputImagePath,
+          outputPath,
+          maskPath: opts.mask ? path.resolve(opts.mask) : undefined,
+          projectRoot,
+          provider: opts.provider,
+        });
+        console.log(`Wrote ${result.outputPath} method=${result.method ?? "?"} dryRun=${Boolean(result.dryRun)}`);
+      } catch (err) {
+        console.error((err as Error).message);
+        process.exitCode = 1;
+      }
+    }
+  );
+
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

@@ -5,7 +5,8 @@
 ## English
 
 `ai2live` uses a **pluggable model execution layer** (`@ai2live/model-providers`).  
-The LLM is for **planning / diagnosis text only**. Compile, QC, hashes, PSD naming stay deterministic code paths.
+The LLM is for **planning / diagnosis text only**. Compile, QC, hashes, PSD naming stay deterministic code paths.  
+Image edit (Grok/OpenAI) uses the OpenAI-compatible **Images API** when configured; dry-run writes under `previews/`.
 
 ### Switch provider
 
@@ -17,6 +18,7 @@ export AI2LIVE_MODEL_PROVIDER=grok    # default
 ai2live providers
 ai2live agent plan ./examples/simple-character --provider grok
 ai2live agent diagnose ./examples/simple-character --provider openai
+ai2live agent repair ./examples/simple-character --provider grok --apply-stub
 ```
 
 ### Dry-run (no API key / no network)
@@ -24,9 +26,10 @@ ai2live agent diagnose ./examples/simple-character --provider openai
 ```bash
 export AI2LIVE_MODEL_DRY_RUN=1
 ai2live agent plan ./examples/simple-character
+ai2live image edit --prompt "fix hair" --input ./in.png --project ./examples/simple-character --provider grok
 ```
 
-Returns a deterministic mock JSON plan. Use this in CI and local smoke tests.
+Returns deterministic mock JSON / copies or writes a tiny PNG. Use this in CI and local smoke tests.
 
 ---
 
@@ -37,18 +40,17 @@ Returns a deterministic mock JSON plan. Use this in CI and local smoke tests.
 | `AI2LIVE_GROK_API_KEY` or `XAI_API_KEY` | Auth | — |
 | `AI2LIVE_GROK_BASE_URL` | API base | `https://api.x.ai/v1` |
 | `AI2LIVE_GROK_MODEL` | Chat model | `grok-2-latest` |
+| `AI2LIVE_GROK_IMAGE_MODEL` | Images edit model | same as chat model |
 
 ```bash
 export AI2LIVE_MODEL_PROVIDER=grok
 export AI2LIVE_GROK_API_KEY=xai-...
-# optional:
-# export AI2LIVE_GROK_MODEL=grok-2-latest
-# export AI2LIVE_GROK_BASE_URL=https://api.x.ai/v1
-
 ai2live agent plan ./examples/simple-character
+ai2live image edit --prompt "…" --input ./layer.png --provider grok --project ./examples/simple-character
 ```
 
-OpenAI-compatible `POST /chat/completions` client (shared with OpenAI provider).
+OpenAI-compatible `POST /chat/completions` and (when supported) `POST /images/edits`.  
+**Note:** xAI may not expose `/images/edits`; dry-run always works. Chat+vision fallback is documented but not auto-invoked yet.
 
 Without a key and without dry-run: `ProviderNotConfiguredError` with setup hints.
 
@@ -61,37 +63,53 @@ Without a key and without dry-run: `ProviderNotConfiguredError` with setup hints
 | `AI2LIVE_OPENAI_API_KEY` or `OPENAI_API_KEY` | Auth | — |
 | `AI2LIVE_OPENAI_BASE_URL` | API base | `https://api.openai.com/v1` |
 | `AI2LIVE_OPENAI_MODEL` | Chat model | `gpt-4o` |
+| `AI2LIVE_OPENAI_IMAGE_MODEL` | Images edit model | `dall-e-2` |
 
 ```bash
 export AI2LIVE_MODEL_PROVIDER=openai
 export OPENAI_API_KEY=sk-...
-# optional: AI2LIVE_OPENAI_MODEL=gpt-4.1
-
 ai2live agent diagnose ./examples/simple-character --provider openai
+ai2live image edit --prompt "…" --input ./layer.png --out ./previews/edit.png --provider openai
 ```
-
-Same HTTP client shape as Grok — swap provider without rewriting the pipeline.
 
 ---
 
 ### 3. Codex (local CLI — not OpenAI cloud by default)
 
-Runs a **local Codex binary**; stdout is treated as the completion. Designed so a later local agent can edit the project / run tools.
+Runs a **local Codex binary**; stdout is treated as the completion.
 
 | Env | Purpose | Default |
 |-----|---------|---------|
 | `AI2LIVE_CODEX_BIN` | Executable path or name | `codex` |
+| `AI2LIVE_CODEX_ARGS` | Extra flags (JSON array or shell-split string) | — |
+| `AI2LIVE_CODEX_CWD` | Working directory | request / provider `cwd` |
+| `AI2LIVE_CODEX_TIMEOUT_MS` | Spawn timeout | `120000` |
+
+Invocation prefers `codex exec --skip-git-repo-check` with the prompt on **stdin**. Alternate styles (`codex -`, prompt as argv) are available via `buildCodexArgv` for adapters/tests.
 
 ```bash
-# Install Codex CLI separately, then:
 export AI2LIVE_MODEL_PROVIDER=codex
-export AI2LIVE_CODEX_BIN=codex   # or absolute path / npx wrapper
+export AI2LIVE_CODEX_BIN=codex
+export AI2LIVE_CODEX_ARGS='["--sandbox","read-only"]'
+export AI2LIVE_CODEX_CWD=./examples/simple-character
+export AI2LIVE_CODEX_TIMEOUT_MS=60000
 
 ai2live agent plan ./examples/simple-character --provider codex
 ```
 
 If the binary is missing: `ProviderBinaryMissingError` + install/config hints.  
-Dry-run still works without installing Codex.
+Dry-run still works without installing Codex. Codex does **not** implement `imageEdit`.
+
+---
+
+### Image worker (optional HTTP)
+
+```bash
+export AI2LIVE_IMAGE_WORKER_URL=http://127.0.0.1:8090
+# see services/image-worker-python/README.md
+```
+
+`@ai2live/image-client` posts to `/segment` and `/inpaint` when set; otherwise writes local stub masks.
 
 ---
 
@@ -102,51 +120,47 @@ import {
   createProvider,
   resolveProviderId,
   listProviders,
+  buildCodexArgv,
 } from "@ai2live/model-providers";
 
-const id = resolveProviderId();          // from env, default "grok"
+const id = resolveProviderId();
 const provider = createProvider(id);
 const result = await provider.chat({
   messages: [{ role: "user", content: "…" }],
   response_format: "json",
 });
+await provider.imageEdit?.({
+  prompt: "fix bangs",
+  inputImagePath: "./in.png",
+  projectRoot: "./examples/simple-character",
+});
 ```
-
-`AgentContext.provider` in `@ai2live/agent-runtime` is the same `ModelProvider`.
 
 ---
 
 ## 中文
 
 `ai2live` 通过 **可插拔模型层**（`@ai2live/model-providers`）接入 LLM。  
-**原则**：Agent 负责策略/诊断文案；编译、QC、哈希、PSD 命名仍走确定性代码，换模型不必改管线。
+**原则**：Agent 负责策略/诊断文案；编译、QC、哈希、PSD 命名仍走确定性代码。
 
 ### 切换与干跑
 
 ```bash
-export AI2LIVE_MODEL_PROVIDER=grok|openai|codex   # 默认 grok
-export AI2LIVE_MODEL_DRY_RUN=1                    # 无密钥时的确定性 mock
+export AI2LIVE_MODEL_PROVIDER=grok|openai|codex
+export AI2LIVE_MODEL_DRY_RUN=1
 
 ai2live providers
-ai2live agent plan <项目目录> --provider grok
-ai2live agent diagnose <项目目录> --provider openai
+ai2live agent plan|diagnose|repair <项目目录> --provider grok
+ai2live image edit --prompt "…" --input ./in.png --provider openai --project <项目>
 ```
 
-### Grok（本地默认）
+### Codex 环境变量
 
-- 密钥：`AI2LIVE_GROK_API_KEY` 或 `XAI_API_KEY`
-- 地址：`AI2LIVE_GROK_BASE_URL`（默认 `https://api.x.ai/v1`）
-- 模型：`AI2LIVE_GROK_MODEL`（默认 `grok-2-latest`）
+- `AI2LIVE_CODEX_BIN` / `AI2LIVE_CODEX_ARGS` / `AI2LIVE_CODEX_CWD` / `AI2LIVE_CODEX_TIMEOUT_MS`
 
-### OpenAI（ChatGPT）
+### 图像
 
-- 密钥：`AI2LIVE_OPENAI_API_KEY` 或 `OPENAI_API_KEY`
-- 地址：`AI2LIVE_OPENAI_BASE_URL`（默认 `https://api.openai.com/v1`）
-- 模型：`AI2LIVE_OPENAI_MODEL`（默认 `gpt-4o`）
-
-### Codex（本地 CLI）
-
-- **默认不打 OpenAI 云端**；对本地 `codex`（或 `AI2LIVE_CODEX_BIN`）做 shell 适配，stdout 作为 completion。
-- 二进制缺失会给出清晰错误与安装说明；可先用 `AI2LIVE_MODEL_DRY_RUN=1`。
+- Grok/OpenAI：`imageEdit` → Images API；干跑写入 `previews/`
+- 可选 Python worker：`AI2LIVE_IMAGE_WORKER_URL`
 
 详细英文表见上方。更多端到端步骤见 [usage.md](./usage.md) / [使用说明.md](./使用说明.md)。

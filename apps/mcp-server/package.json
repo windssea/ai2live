@@ -3,15 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "ai2live-mcp": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "echo skip"
+    "test": "vitest run --passWithNoTests",
+    "start": "node ./dist/index.js"
   },
   "dependencies": {
-    "@ai2live/domain": "workspace:*"
+    "@ai2live/domain": "workspace:*",
+    "@ai2live/psd-compiler": "workspace:*",
+    "@ai2live/qc-engine": "workspace:*",
+    "@ai2live/model-providers": "workspace:*",
+    "@ai2live/agent-runtime": "workspace:*",
+    "@ai2live/manifest-schema": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
     "@types/node": "^22.10.0"
   }
 }

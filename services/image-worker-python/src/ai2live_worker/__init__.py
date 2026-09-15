@@ -1,2 +1,5 @@
-"""Stub image worker — M0."""
-__version__ = "0.1.0"
+"""ai2live image worker package."""
+
+from .main import health, inpaint_stub, segment_stub
+
+__all__ = ["health", "segment_stub", "inpaint_stub"]

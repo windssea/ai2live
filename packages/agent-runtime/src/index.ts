@@ -7,14 +7,9 @@ import {
   type ProviderId,
   type ChatCompletionResult,
 } from "@ai2live/model-providers";
+import type { AgentContext } from "./types-internal.js";
 
-export interface AgentContext {
-  projectRoot: string;
-  history: HistoryStore;
-  budget: CostBudget;
-  /** Pluggable LLM / local Codex provider (planning & diagnosis only). */
-  provider: ModelProvider;
-}
+export type { AgentContext };
 
 export interface CreateAgentContextOptions {
   providerId?: ProviderId | string;
@@ -70,17 +65,11 @@ export function defaultUnattendedPlan(): AgentPlanStep[] {
 }
 
 export interface PlannerChatOptions {
-  /** Extra user context (project summary, goals). */
   userPrompt?: string;
-  /** Seed plan to augment. */
   basePlan?: AgentPlanStep[];
   temperature?: number;
 }
 
-/**
- * Ask the configured provider for a strategy/plan JSON.
- * Deterministic tools (compile/qc/…) stay as code paths — LLM only plans/diagnoses text.
- */
 export async function runPlannerChat(
   ctx: AgentContext,
   opts: PlannerChatOptions = {}
@@ -137,9 +126,6 @@ export interface DiagnoseChatOptions {
   temperature?: number;
 }
 
-/**
- * Feed a validation report summary to the LLM for repair suggestions.
- */
 export async function runDiagnoseChat(
   ctx: AgentContext,
   opts: DiagnoseChatOptions
@@ -187,7 +173,17 @@ export async function runDiagnoseChat(
   return { result, parsed };
 }
 
-/** Alias used by some call sites / docs. */
 export const runAgentStep = runPlannerChat;
 
-export type { ModelProvider, ProviderId, ChatCompletionResult };
+export {
+  parseRepairPlan,
+  runRepairClosedLoop,
+} from "./repair-loop.js";
+export type {
+  RepairAction,
+  RepairPlan,
+  RepairClosedLoopOptions,
+  RepairClosedLoopResult,
+} from "./repair-loop.js";
+
+export type { ModelProvider, ProviderId, ChatCompletionResult, CostBudget };

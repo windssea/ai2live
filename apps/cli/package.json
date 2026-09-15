@@ -26,7 +26,8 @@
     "@ai2live/product": "workspace:*",
     "@ai2live/agent-runtime": "workspace:*",
     "@ai2live/model-providers": "workspace:*",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "@ai2live/image-client": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
