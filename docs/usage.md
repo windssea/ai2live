@@ -1,172 +1,128 @@
 # Usage guide — ai2live
 
-[English](#english) | [中文见 使用说明.md](./使用说明.md)
+[中文：使用说明.md](./使用说明.md) · [Known issues：遗留问题.md](./遗留问题.md) · [DOD_STATUS.md](./DOD_STATUS.md) · [DESIGN_COMPLETION.md](./DESIGN_COMPLETION.md)
 
-## English
-
-### Single design image → Live2D (primary path)
-
-From **one character design/reference PNG** to a **downloadable layered PSD (primary asset)** plus AutoLive2d / psd2live packages — no hand-authored layer tree required.
-
-**Primary deliverable: layered PSD** (Photoshop / Live2D import):
-
-- `exports/<character_or_project>_layers.psd` (preferred for download/distribution)
-- `psd/character.psd` (pipeline working copy)
-- `exports/import_manifest.json` (UUID ↔ PSD layer name map)
-
-#### Studio console (recommended)
-
-```bash
-pnpm install && pnpm -r build
-pnpm --filter @ai2live/studio dev
-# open http://127.0.0.1:5173
-```
-
-1. **Import design image** (upload or local path)
-2. Pick provider (`grok` default); enable **dry-run** without API keys
-3. Click **Run All / 一键完成全部**
-4. Download **PSD** from the Artifacts panel (「下载 PSD」), and inspect adapters / `pipeline_report.json`
-
-#### CLI one-shot
-
-```bash
-export AI2LIVE_MODEL_DRY_RUN=1
-ai2live run ./my-character --from-image ./design.png --dry-run --provider grok
-```
-
-Outputs (PSD is first-class):
-
-- **`exports/<name>_layers.psd`** + `exports/import_manifest.json` (primary)
-- `psd/character.psd` (working copy)
-- AutoLive2d + psd2live deep session packages
-- `validation/pipeline_report.json`
-
-Dry-run / missing keys use a **deterministic anime upper-body template** for the layer plan. With Grok/OpenAI keys set, the planner can propose a better plan from image metadata.
-
-Shared orchestrator: `@ai2live/pipeline` (`runFullPipeline`). Studio streams NDJSON events from `POST /api/pipeline`.
+> Calibrated to **2026-09-15 / main (PR #1–#14)** — what works today, how to run it, and what remains external.
 
 ---
 
-### Prerequisites
+## 1. What it does
 
-- Node.js **≥ 20**
-- [pnpm](https://pnpm.io) **9.x** (repo pins `packageManager: pnpm@9.15.0`)
+`ai2live` compiles Live2D-oriented assets from **text** or **one design image** into:
 
-### 1. Install & build
+| Priority | Artifact | Path |
+|----------|----------|------|
+| Primary | Layered PSD | `exports/<name>_layers.psd` (+ working copy `psd/character.psd`) |
+| Manifest | Import map | `exports/import_manifest.json` |
+| Downstream | AutoLive2d / psd2live packages | `builds/…` (**mock backends by default**; real binaries optional) |
+| Reports | Pipeline / QC / gates | `validation/pipeline_report.json`, etc. |
+
+**LEFT/RIGHT = character’s own sides.** psd2live GPL sources are **never** vendored.
+
+---
+
+## 2. Install
+
+Node ≥ 20, pnpm 9.x.
 
 ```bash
-git clone <repo-url> ai2live && cd ai2live
-pnpm install
-pnpm -r build
-pnpm -r test
+git clone https://github.com/windssea/ai2live.git && cd ai2live
+pnpm install && pnpm -r build && pnpm -r test
+pnpm ai2live -- doctor
 ```
 
-### 2. Example project assets
+Env template: [`.env.example`](../.env.example).
+
+---
+
+## 3. Primary path: one design image → PSD
+
+### Studio
+
+```bash
+pnpm --filter @ai2live/studio dev   # http://127.0.0.1:5173
+```
+
+Import image → provider / dry-run → **Run All** → download PSD; inspect state machine & reports.
+
+### CLI
+
+```bash
+export AI2LIVE_MODEL_DRY_RUN=1
+pnpm ai2live -- run ./my-character --from-image ./design.png --dry-run --provider grok
+```
+
+Defaults: vision-review dual-judge on; `AI2LIVE_USE_MOCK_RIG=1` for pose/downstream without Cubism.
+
+---
+
+## 4. Text init
+
+```bash
+pnpm ai2live -- init ./my-character --text "front upper-body anime girl, clear face, bindable"
+pnpm ai2live -- run ./my-character --dry-run
+```
+
+---
+
+## 5. Existing layered project
 
 ```bash
 node examples/simple-character/generate-assets.mjs
+pnpm ai2live -- compile ./examples/simple-character
+pnpm ai2live -- validate ./examples/simple-character
 ```
 
-### 3. Compile & validate (existing layered project)
+---
 
-```bash
-pnpm compile:example
-pnpm validate:example
-```
-
-### 3b. Text → rig-friendly master
-
-```bash
-export AI2LIVE_MODEL_DRY_RUN=1
-ai2live init ./my-char --text "Pink hair anime girl, blue eyes, upper body"
-# design/master_neutral.png passes Gate 0; optional live refine when keys set + dry-run off
-```
-
-### 4. Unified pipeline
-
-```bash
-ai2live run <project> [--from-image <png>] [--provider grok|openai|codex] [--dry-run]
-ai2live run <project> --skip-segment --skip-repair --json-events
-ai2live pipeline <project>    # alias of run
-ai2live unattended <project>  # thin wrapper; prefer `run`
-```
-
-### 5. Milestone tools
-
-```bash
-ai2live segment <project> [--feather N] [--split-bilateral] [--debug]
-ai2live occlusion|expressions|repair|downstream <project>
-ai2live doctor [--json]
-```
-
-### 6. Model providers
-
-```bash
-ai2live providers
-export AI2LIVE_MODEL_DRY_RUN=1
-ai2live agent plan ../../examples/simple-character
-ai2live agent diagnose ../../examples/simple-character
-ai2live agent repair ../../examples/simple-character --apply-stub
-```
-
-### 7. Image edit / MCP / doctor
-
-Same as before — see [providers.md](./providers.md).
-
-### CLI surface
+## 6. CLI map
 
 ```text
-ai2live run|pipeline <project> [--from-image] [--dry-run] [--provider] [--json-events]
-ai2live compile|validate|segment|occlusion|expressions|repair|downstream|unattended <project>
-ai2live doctor [--json]
-ai2live providers
-ai2live agent plan|diagnose|repair <project>
-ai2live image edit --prompt … --input …
-ai2live layer replace <project> <layerId> --png <path>
-ai2live eval [--suite all|hair-stress|occlusion-stress|flat-image]
+init | run/pipeline | unattended(deprecated→run)
+compile | validate | segment | occlusion | expressions | repair | downstream
+doctor | providers | status
+agent plan|diagnose|repair
+image edit
+revision list|checkout|resume
+layer replace
+eval
 ```
 
-## Design-gap progress (Batch 1)
+---
 
-- Gate 6 PSD round-trip → `validation/psd_roundtrip.json`
-- Occlusion: completion mask + imageEdit / neighbor-blend fallback (`completion_method`)
-- Expressions: Edit Delta via imageEdit; dry-run ROI morph stub + provenance
-- `ai2live agent repair --apply` / `run --apply-repair` → `validation/repair_result.json`
-- Content-addressed layer hashes under `assets/sha256/` on compile
+## 7. Providers
 
-## Design-gap progress (Batch 2)
+| Id | Keys | Notes |
+|----|------|-------|
+| grok (default) | `AI2LIVE_GROK_API_KEY` / `XAI_API_KEY` | xAI OpenAI-compat |
+| openai | `OPENAI_API_KEY` | Chat + Images |
+| codex | `AI2LIVE_CODEX_BIN` | Local CLI |
 
-- Quality Gates 0–5 → `validation/quality_gates.json` (Gate 2 + Gate 4 real heuristics)
-- MCP: inspect / compose / validate / downstream / revision
-- CLI: `ai2live revision list|checkout|resume`
-- Eval: `node evals/run-hair-stress.mjs`
+Dry-run: `AI2LIVE_MODEL_DRY_RUN=1`. See [providers.md](./providers.md).
 
-## Design-gap progress (Batch 3)
+---
 
-- Min-region inpaint (`minRegionInpaint`): `image_edit` → `opencv_inpaint` / telea-like → `neighbor_blend`
-- MCP §8 tools complete: `design`, `view`, `asset`, `layer`, `task`
-- Gates 0 / 1 / 5 real heuristics in `validation/quality_gates.json`
-- Downstream invoke smoke via `AI2LIVE_AUTOLIVE2D_CMD` / `AI2LIVE_PSD2LIVE_CMD` (else `invoke_skipped.json`)
-- Pose QA: parameter-contract annotated composites + `pose_qa_findings.json`
+## 8. Evals
 
-## Design-gap progress (Batch 4)
-
-- Evals: occlusion-stress + flat-image + `evals/run-all.mjs` / `ai2live eval` → `evals/last-report.json`
-- Prompt layering: `@ai2live/prompt-layers` (Identity / Style / Rigability / EditDelta / Negatives)
-- Human replace-and-continue: `ai2live layer replace <project> <layerId> --png <path>`
-- Downstream: `invoke_log.json` + safe check when `AI2LIVE_*_CMD` set
-- `pipeline_report.json`: provider, completion_method_histogram, asset_sha256_count, package_version
-
-### CLI additions
-
-```text
-ai2live eval [--suite all|hair-stress|occlusion-stress|flat-image]
-ai2live layer replace <project> <layerId> --png <path>
+```bash
+pnpm ai2live -- eval
+# → evals/last-report.json (hair / occlusion / flat); target aggregate 100%
 ```
 
+---
 
-## Batch 5 CLI
+## 9. Known issues (summary)
 
-- `ai2live status <project>` — project state machine
-- `ai2live validate|repair --vision-review` — dual-judge (VLM dry-run mock by default)
-- Revision snapshots under `.ai2live/snapshots/<rev>/`
+In-repo DESIGN DoD has **no PARTIAL** rows. Remaining items are **EXTERNAL** or quality ceilings — full list in [遗留问题.md](./遗留问题.md):
+
+1. Real Cubism / cmo3/moc3 via `AI2LIVE_PSD2LIVE_CMD`
+2. Real AutoLive2d via `AI2LIVE_AUTOLIVE2D_CMD`
+3. Production VLM/image quality needs API keys
+4. Optional OpenCV TELEA for worker
+5. Synthetic evals ≠ arbitrary commercial art zero-touch
+
+---
+
+## 10. Doc map
+
+Usage (this file) · [使用说明.md](./使用说明.md) · [遗留问题.md](./遗留问题.md) · [DOD_STATUS](./DOD_STATUS.md) · [DESIGN_COMPLETION](./DESIGN_COMPLETION.md) · [DESIGN.md](./DESIGN.md) · [providers.md](./providers.md) · [mock-rig.md](./mock-rig.md) · [ROADMAP](../ROADMAP.md)

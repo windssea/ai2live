@@ -1,5 +1,8 @@
 # Roadmap
 
+> 使用与遗留问题请优先看：[docs/使用说明.md](docs/使用说明.md)、[docs/遗留问题.md](docs/遗留问题.md)、[docs/DOD_STATUS.md](docs/DOD_STATUS.md)。  
+> 仓库内 DESIGN DoD 已无 PARTIAL（截至 PR #14）；下文保留里程碑历史说明。
+
 ## M0 — Deterministic Layer Package
 
 Hand-authored RGBA + LayerManifest → PSD → adapter packages + static QC.
