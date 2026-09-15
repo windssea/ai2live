@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 /**
- * Lightweight local API for Studio — reads project files and spawns ai2live CLI.
+ * Local Studio API — project IO + unified pipeline (SSE / NDJSON).
  * Bind: 127.0.0.1 only. No auth (local MVP).
  */
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { access, readFile, writeFile, mkdir } from "node:fs/promises";
+import { access, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CLI_JS = path.join(REPO_ROOT, "apps/cli/dist/cli.js");
+const PIPELINE_JS = path.join(REPO_ROOT, "packages/pipeline/dist/index.js");
 const PORT = Number(process.env.AI2LIVE_STUDIO_API_PORT || 5174);
 const HOST = "127.0.0.1";
+
+/** @type {{ abort?: AbortController, busy?: boolean }} */
+const pipelineState = { busy: false };
 
 function send(res, status, body, headers = {}) {
   const data = typeof body === "string" ? body : JSON.stringify(body, null, 2);
@@ -36,28 +40,12 @@ async function readJson(req) {
 }
 
 function resolveProject(projectPath) {
-  const p = path.resolve(projectPath || path.join(REPO_ROOT, "examples/simple-character"));
-  if (!p.startsWith(REPO_ROOT) && process.env.AI2LIVE_STUDIO_ALLOW_ANY !== "1") {
-    // Allow any absolute path on local machine for MVP when under home/workspace too
-  }
-  return p;
+  return path.resolve(projectPath || path.join(REPO_ROOT, "examples/simple-character"));
 }
 
-async function runCli(args, cwd) {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [CLI_JS, ...args], {
-      cwd,
-      env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("close", (code) => {
-      resolve({ code: code ?? 1, stdout, stderr });
-    });
-  });
+async function loadPipeline() {
+  await access(PIPELINE_JS);
+  return import(pathToFileURL(PIPELINE_JS).href);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -76,6 +64,19 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         exampleProject: path.join(REPO_ROOT, "examples/simple-character"),
         repoRoot: REPO_ROOT,
+        steps: [
+          "bootstrap",
+          "doctor",
+          "segment",
+          "occlusion",
+          "expressions",
+          "compile",
+          "qc",
+          "pose",
+          "repair",
+          "downstream",
+          "report",
+        ],
       });
     }
 
@@ -84,12 +85,14 @@ const server = http.createServer(async (req, res) => {
       const manPath = path.join(projectPath, "spec", "layer_manifest.json");
       const charPath = path.join(projectPath, "spec", "character.json");
       const reportPath = path.join(projectPath, "validation", "report.json");
+      const pipelineReportPath = path.join(projectPath, "validation", "pipeline_report.json");
       const segReport = path.join(projectPath, "masks", "segmentation_report.json");
       const settingsPath = path.join(projectPath, ".ai2live-studio.json");
 
       let manifest = null;
       let character = null;
       let validation = null;
+      let pipelineReport = null;
       let segmentation = null;
       let settings = null;
       try {
@@ -104,6 +107,11 @@ const server = http.createServer(async (req, res) => {
       }
       try {
         validation = JSON.parse(await readFile(reportPath, "utf8"));
+      } catch {
+        /* optional */
+      }
+      try {
+        pipelineReport = JSON.parse(await readFile(pipelineReportPath, "utf8"));
       } catch {
         /* optional */
       }
@@ -133,15 +141,25 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      const artifactPaths = {
+        psd: path.join(projectPath, "psd", "character.psd"),
+        importManifest: path.join(projectPath, "psd", "import_manifest.json"),
+        autolive2d: path.join(projectPath, "builds", "autolive2d"),
+        psd2live: path.join(projectPath, "builds", "psd2live"),
+        pipelineReport: pipelineReportPath,
+      };
+
       return send(res, 200, {
         projectPath,
         character,
         manifest,
         layers: manifest.layers ?? [],
         validation,
+        pipelineReport,
         segmentation,
         settings,
         previewExists,
+        artifactPaths,
         previewUrls: {
           master: previewExists.master
             ? `/api/file?path=${encodeURIComponent(previews.master)}`
@@ -182,14 +200,184 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/settings" && req.method === "POST") {
       const body = await readJson(req);
       const projectPath = resolveProject(body.projectPath);
+      await mkdir(projectPath, { recursive: true });
       const settingsPath = path.join(projectPath, ".ai2live-studio.json");
       const settings = {
         provider: body.provider ?? "grok",
         dryRun: Boolean(body.dryRun),
+        skip: body.skip ?? {},
         updatedAt: new Date().toISOString(),
       };
       await writeFile(settingsPath, JSON.stringify(settings, null, 2));
       return send(res, 200, { ok: true, settings, path: settingsPath });
+    }
+
+    if (url.pathname === "/api/import-image" && req.method === "POST") {
+      const body = await readJson(req);
+      const projectPath = resolveProject(body.projectPath);
+      const imagePath = body.imagePath ? path.resolve(body.imagePath) : null;
+      const imageBase64 = body.imageBase64;
+      if (!imagePath && !imageBase64) {
+        return send(res, 400, { error: "Provide imagePath or imageBase64" });
+      }
+      await mkdir(path.join(projectPath, "design"), { recursive: true });
+      const destMaster = path.join(projectPath, "design", "master_neutral.png");
+      const destRef = path.join(projectPath, "design", "reference.png");
+      if (imageBase64) {
+        const raw = String(imageBase64).replace(/^data:image\/\w+;base64,/, "");
+        const buf = Buffer.from(raw, "base64");
+        await writeFile(destMaster, buf);
+        await writeFile(destRef, buf);
+      } else {
+        await access(imagePath);
+        await copyFile(imagePath, destMaster);
+        await copyFile(imagePath, destRef);
+      }
+      return send(res, 200, {
+        ok: true,
+        projectPath,
+        masterPath: destMaster,
+        referencePath: destRef,
+        fromImage: destMaster,
+      });
+    }
+
+    if (url.pathname === "/api/pipeline/cancel" && req.method === "POST") {
+      if (pipelineState.abort) {
+        pipelineState.abort.abort();
+        return send(res, 200, { ok: true, cancelled: true });
+      }
+      return send(res, 200, { ok: true, cancelled: false });
+    }
+
+    if (url.pathname === "/api/pipeline" && req.method === "POST") {
+      if (pipelineState.busy) {
+        return send(res, 409, { error: "Pipeline already running" });
+      }
+      const body = await readJson(req);
+      const projectPath = resolveProject(body.projectPath);
+      const provider = body.provider ?? "grok";
+      const dryRun = Boolean(body.dryRun);
+      const fromImage = body.fromImage ? path.resolve(body.fromImage) : undefined;
+      const skip = body.skip ?? {};
+      const stream = body.stream !== false;
+
+      const envPatch = { ...process.env };
+      envPatch.AI2LIVE_MODEL_PROVIDER = provider;
+      if (dryRun) envPatch.AI2LIVE_MODEL_DRY_RUN = "1";
+      else delete envPatch.AI2LIVE_MODEL_DRY_RUN;
+
+      // Prefer in-process pipeline
+      let useInProcess = true;
+      try {
+        await access(PIPELINE_JS);
+      } catch {
+        useInProcess = false;
+      }
+
+      if (stream) {
+        res.writeHead(200, {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Transfer-Encoding": "chunked",
+        });
+      }
+
+      const writeEvent = (e) => {
+        if (stream) {
+          res.write(JSON.stringify(e) + "\n");
+        }
+      };
+
+      pipelineState.busy = true;
+      pipelineState.abort = new AbortController();
+
+      try {
+        if (useInProcess) {
+          // Apply env for doctor / providers inside process
+          Object.assign(process.env, envPatch);
+          const { runFullPipeline } = await loadPipeline();
+          const result = await runFullPipeline({
+            projectRoot: projectPath,
+            provider,
+            dryRun,
+            fromImage,
+            characterName: body.characterName,
+            skip,
+            alwaysRepair: Boolean(body.alwaysRepair),
+            signal: pipelineState.abort.signal,
+            onEvent: writeEvent,
+          });
+          if (!stream) {
+            return send(res, 200, result);
+          }
+          res.end();
+        } else {
+          // Fallback: spawn CLI with --json-events
+          try {
+            await access(CLI_JS);
+          } catch {
+            if (stream) {
+              writeEvent({
+                type: "error",
+                message: `CLI not built: ${CLI_JS}. Run pnpm -r build first.`,
+              });
+              res.end();
+              return;
+            }
+            return send(res, 500, { error: `CLI not built: ${CLI_JS}` });
+          }
+          const args = ["run", projectPath, "--json-events"];
+          if (provider) args.push("--provider", provider);
+          if (dryRun) args.push("--dry-run");
+          if (fromImage) args.push("--from-image", fromImage);
+          if (body.characterName) args.push("--name", body.characterName);
+          if (skip.segment) args.push("--skip-segment");
+          if (skip.repair) args.push("--skip-repair");
+          if (skip.occlusion) args.push("--skip-occlusion");
+          if (skip.expressions) args.push("--skip-expressions");
+          if (skip.downstream) args.push("--skip-downstream");
+
+          await new Promise((resolve) => {
+            const child = spawn(process.execPath, [CLI_JS, ...args], {
+              cwd: REPO_ROOT,
+              env: envPatch,
+              stdio: ["ignore", "pipe", "pipe"],
+            });
+            const onAbort = () => child.kill("SIGTERM");
+            pipelineState.abort.signal.addEventListener("abort", onAbort);
+            child.stdout.on("data", (d) => {
+              if (stream) res.write(d);
+            });
+            child.stderr.on("data", (d) => {
+              if (stream) {
+                writeEvent({ type: "log", message: d.toString() });
+              }
+            });
+            child.on("close", () => {
+              pipelineState.abort.signal.removeEventListener("abort", onAbort);
+              resolve();
+            });
+          });
+          if (stream) res.end();
+          else send(res, 200, { ok: true });
+        }
+      } catch (err) {
+        const message = (err && err.message) || String(err);
+        if (stream) {
+          writeEvent({ type: "error", message });
+          writeEvent({ type: "done", message });
+          res.end();
+        } else {
+          send(res, 500, { error: message });
+        }
+      } finally {
+        pipelineState.busy = false;
+        pipelineState.abort = undefined;
+      }
+      return;
     }
 
     if (url.pathname === "/api/run" && req.method === "POST") {
@@ -232,6 +420,12 @@ const server = http.createServer(async (req, res) => {
           break;
         case "providers":
           args = ["providers"];
+          break;
+        case "run":
+        case "pipeline":
+          args = ["run", projectPath, "--dry-run"];
+          if (provider) args.push("--provider", provider);
+          if (dryRun) args.push("--dry-run");
           break;
         default:
           return send(res, 400, { error: `Unknown action: ${action}` });

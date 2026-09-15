@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadPrefs, savePrefs, type StudioPrefs } from "./storage";
 
 type Layer = {
@@ -10,16 +10,38 @@ type Layer = {
   status?: string;
 };
 
+type StepStatus = "pending" | "running" | "ok" | "fail" | "skip" | "warn";
+
 type ProjectPayload = {
   projectPath: string;
   layers: Layer[];
   character?: { name?: string; id?: string };
   validation?: unknown;
+  pipelineReport?: {
+    passed?: boolean;
+    steps?: Array<{ id: string; status: string; message?: string }>;
+    artifacts?: Record<string, string | undefined>;
+  };
   segmentation?: unknown;
   settings?: { provider?: string; dryRun?: boolean };
   previewExists: Record<string, boolean>;
   previewUrls: Record<string, string | null>;
+  artifactPaths?: Record<string, string>;
 };
+
+const STEP_DEFS: { id: string; label: string }[] = [
+  { id: "bootstrap", label: "Bootstrap / 导入设定图" },
+  { id: "doctor", label: "Doctor" },
+  { id: "segment", label: "Segment" },
+  { id: "occlusion", label: "Occlusion" },
+  { id: "expressions", label: "Expressions" },
+  { id: "compile", label: "Compile PSD" },
+  { id: "qc", label: "Static QC" },
+  { id: "pose", label: "Pose grid" },
+  { id: "repair", label: "Agent repair" },
+  { id: "downstream", label: "Downstream packages" },
+  { id: "report", label: "Pipeline report" },
+];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -39,8 +61,18 @@ export function App() {
   const [log, setLog] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [feather, setFeather] = useState(2);
-  const [splitBilateral, setSplitBilateral] = useState(true);
+  const [fromImagePath, setFromImagePath] = useState("");
+  const [characterName, setCharacterName] = useState("");
+  const [skip, setSkip] = useState<Record<string, boolean>>({
+    repair: false,
+    segment: false,
+  });
+  const [stepStatus, setStepStatus] = useState<Record<string, StepStatus>>(() =>
+    Object.fromEntries(STEP_DEFS.map((s) => [s.id, "pending"]))
+  );
+  const [pipelineSummary, setPipelineSummary] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
   const persist = useCallback(
     (patch?: Partial<StudioPrefs>) => {
@@ -86,6 +118,20 @@ export function App() {
         if (typeof data.settings?.dryRun === "boolean") {
           setDryRun(data.settings.dryRun);
         }
+        if (data.pipelineReport?.steps) {
+          const next: Record<string, StepStatus> = Object.fromEntries(
+            STEP_DEFS.map((s) => [s.id, "pending" as StepStatus])
+          );
+          for (const s of data.pipelineReport.steps) {
+            const st = s.status as StepStatus;
+            next[s.id] =
+              st === "ok" || st === "fail" || st === "skip" || st === "warn"
+                ? st
+                : "pending";
+          }
+          setStepStatus(next);
+          setPipelineSummary(JSON.stringify(data.pipelineReport, null, 2));
+        }
         persist({ projectPath: data.projectPath });
         setLog((prev) => prev + `Opened ${data.projectPath}\n`);
       } catch (e) {
@@ -103,45 +149,138 @@ export function App() {
     }
   }, [projectPath, project, openProject]);
 
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [log]);
+
   const saveSettings = async () => {
     persist();
     await api("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectPath, provider, dryRun }),
+      body: JSON.stringify({ projectPath, provider, dryRun, skip }),
     });
-    setLog((p) => p + `Saved settings → .ai2live-studio.json + localStorage\n`);
+    setLog((p) => p + `Saved settings\n`);
   };
 
-  const run = async (action: string) => {
+  const onPickImage = async (file: File) => {
+    const reader = new FileReader();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const target =
+      projectPath ||
+      (await api<{ exampleProject: string }>("/api/defaults")).exampleProject.replace(
+        "simple-character",
+        file.name.replace(/\.\w+$/, "") || "from-image"
+      );
+    setProjectPath(target);
+    const result = await api<{
+      fromImage: string;
+      projectPath: string;
+      masterPath: string;
+    }>("/api/import-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectPath: target,
+        imageBase64: dataUrl,
+      }),
+    });
+    setFromImagePath(result.fromImage);
+    setCharacterName(file.name.replace(/\.\w+$/, ""));
+    setLog(
+      (p) =>
+        p +
+        `导入设定图 → ${result.masterPath}\n项目: ${result.projectPath}\n`
+    );
+    persist({ projectPath: result.projectPath });
+  };
+
+  const cancelPipeline = async () => {
+    await api("/api/pipeline/cancel", { method: "POST", body: "{}" });
+    setLog((p) => p + "Cancel requested\n");
+  };
+
+  const runAll = async () => {
     setBusy(true);
     setError(null);
+    setStepStatus(Object.fromEntries(STEP_DEFS.map((s) => [s.id, "pending"])));
+    setPipelineSummary("");
     try {
       await saveSettings();
-      const result = await api<{
-        code: number;
-        stdout: string;
-        stderr: string;
-        validation?: unknown;
-      }>("/api/run", {
+      const body = {
+        projectPath,
+        provider,
+        dryRun,
+        fromImage: fromImagePath || undefined,
+        characterName: characterName || undefined,
+        skip,
+        stream: true,
+      };
+      setLog((p) => p + `\n$ 一键完成全部 / Run All\n`);
+      const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          projectPath,
-          provider,
-          dryRun,
-          extra: { feather, splitBilateral, debug: true },
-        }),
+        body: JSON.stringify(body),
       });
-      setLog(
-        (p) =>
-          p +
-          `\n$ ai2live ${action}\n` +
-          result.stdout +
-          (result.stderr ? `\n[stderr]\n${result.stderr}` : "") +
-          `\n(exit ${result.code})\n`
-      );
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || res.statusText);
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const ev = JSON.parse(line) as {
+              type: string;
+              step?: string;
+              message?: string;
+              data?: unknown;
+            };
+            if (ev.type === "step_start" && ev.step) {
+              setStepStatus((s) => ({ ...s, [ev.step!]: "running" }));
+              setLog((p) => p + `→ ${ev.step}: ${ev.message ?? ""}\n`);
+            } else if (ev.type === "step_end" && ev.step) {
+              const st =
+                (ev.data as { status?: StepStatus } | undefined)?.status ?? "ok";
+              setStepStatus((s) => ({
+                ...s,
+                [ev.step!]:
+                  st === "fail" || st === "skip" || st === "warn" || st === "ok"
+                    ? st
+                    : "ok",
+              }));
+              setLog((p) => p + `✓ ${ev.step}: ${ev.message ?? ""}\n`);
+            } else if (ev.type === "log") {
+              setLog((p) => p + `${ev.message ?? ""}\n`);
+            } else if (ev.type === "error") {
+              if (ev.step) {
+                setStepStatus((s) => ({ ...s, [ev.step!]: "fail" }));
+              }
+              setLog((p) => p + `✗ ${ev.step ?? ""}: ${ev.message ?? ""}\n`);
+            } else if (ev.type === "done") {
+              setLog((p) => p + `done: ${ev.message ?? ""}\n`);
+              if (ev.data) {
+                setPipelineSummary(JSON.stringify(ev.data, null, 2));
+              }
+            }
+          } catch {
+            setLog((p) => p + line + "\n");
+          }
+        }
+      }
       await openProject(projectPath);
     } catch (e) {
       setError((e as Error).message);
@@ -150,97 +289,215 @@ export function App() {
     }
   };
 
-  const validationJson = project?.validation
-    ? JSON.stringify(project.validation, null, 2)
-    : project?.segmentation
-      ? JSON.stringify(project.segmentation, null, 2)
-      : "// Run validate or segment to populate reports";
+  const importByPath = async () => {
+    if (!fromImagePath.trim()) return;
+    setBusy(true);
+    try {
+      const result = await api<{ fromImage: string; projectPath: string }>(
+        "/api/import-image",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectPath,
+            imagePath: fromImagePath.trim(),
+          }),
+        }
+      );
+      setFromImagePath(result.fromImage);
+      setLog((p) => p + `设定图已就绪: ${result.fromImage}\n`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const passed =
-    project?.validation &&
+    project?.pipelineReport?.passed ??
+    (project?.validation &&
     typeof project.validation === "object" &&
     project.validation !== null &&
     "passed" in project.validation
       ? Boolean((project.validation as { passed?: boolean }).passed)
-      : null;
+      : null);
+
+  const artifacts = useMemo(() => {
+    const a = project?.pipelineReport?.artifacts ?? {};
+    return Object.entries(a).filter(([, v]) => Boolean(v));
+  }, [project]);
 
   return (
-    <div className="app">
+    <div className="app console">
       <header>
-        <h1>ai2live Studio</h1>
-        <input
-          className="path"
-          value={projectPath}
-          onChange={(e) => setProjectPath(e.target.value)}
-          placeholder="Project path"
-        />
-        <button disabled={busy} onClick={() => openProject()}>
-          Open
-        </button>
+        <div className="brand">
+          <h1>ai2live 控制台</h1>
+          <span className="subtitle">一张设定图 → Live2D · Unified Console</span>
+        </div>
         <button
-          disabled={busy}
-          onClick={() =>
-            api<{ exampleProject: string }>("/api/defaults").then((d) =>
-              openProject(d.exampleProject)
-            )
-          }
+          className="run-all"
+          disabled={busy || !projectPath}
+          onClick={() => void runAll()}
+          title="一键完成全部"
         >
-          Example
+          {busy ? "运行中…" : "一键完成全部 / Run All"}
         </button>
-        <select
-          value={provider}
-          onChange={(e) => {
-            const v = e.target.value as StudioPrefs["provider"];
-            setProvider(v);
-            persist({ provider: v });
-          }}
-        >
-          <option value="grok">grok</option>
-          <option value="openai">openai</option>
-          <option value="codex">codex</option>
-        </select>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => {
-              setDryRun(e.target.checked);
-              persist({ dryRun: e.target.checked });
-            }}
-          />
-          dry-run
-        </label>
-        <button disabled={busy} onClick={() => void saveSettings()}>
-          Save prefs
-        </button>
+        {busy && (
+          <button className="danger" onClick={() => void cancelPipeline()}>
+            Cancel
+          </button>
+        )}
       </header>
 
-      {error && (
-        <div style={{ padding: "0.5rem 1rem", color: "var(--err)" }}>{error}</div>
-      )}
+      {error && <div className="banner err">{error}</div>}
 
       <div className="layout">
-        <aside className="panel">
-          <h2>Layers</h2>
+        <aside className="panel sidebar">
+          <h2>项目 / 提供方</h2>
+          <label className="field">
+            <span>项目路径</span>
+            <input
+              value={projectPath}
+              onChange={(e) => setProjectPath(e.target.value)}
+              placeholder="/path/to/project"
+            />
+          </label>
+          <div className="row">
+            <button disabled={busy} onClick={() => openProject()}>
+              Open
+            </button>
+            <button
+              disabled={busy}
+              onClick={() =>
+                api<{ exampleProject: string }>("/api/defaults").then((d) =>
+                  openProject(d.exampleProject)
+                )
+              }
+            >
+              Example
+            </button>
+          </div>
+
+          <h2>导入设定图</h2>
+          <p className="muted">
+            上传或指定一张角色设定/参考图，无需手写图层树。
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onPickImage(f);
+            }}
+          />
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            导入设定图…
+          </button>
+          <label className="field">
+            <span>或本地路径</span>
+            <input
+              value={fromImagePath}
+              onChange={(e) => setFromImagePath(e.target.value)}
+              placeholder="/path/to/character.png"
+            />
+          </label>
+          <div className="row">
+            <button disabled={busy || !fromImagePath} onClick={() => void importByPath()}>
+              使用路径
+            </button>
+          </div>
+          <label className="field">
+            <span>角色名</span>
+            <input
+              value={characterName}
+              onChange={(e) => setCharacterName(e.target.value)}
+              placeholder="optional"
+            />
+          </label>
+
+          <h2>选项</h2>
+          <label className="field">
+            <span>Provider</span>
+            <select
+              value={provider}
+              onChange={(e) => {
+                const v = e.target.value as StudioPrefs["provider"];
+                setProvider(v);
+                persist({ provider: v });
+              }}
+            >
+              <option value="grok">grok</option>
+              <option value="openai">openai</option>
+              <option value="codex">codex</option>
+            </select>
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => {
+                setDryRun(e.target.checked);
+                persist({ dryRun: e.target.checked });
+              }}
+            />
+            dry-run（无密钥可跑通）
+          </label>
+          {(["segment", "repair", "occlusion", "expressions", "downstream"] as const).map(
+            (k) => (
+              <label className="toggle" key={k}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(skip[k])}
+                  onChange={(e) =>
+                    setSkip((s) => ({ ...s, [k]: e.target.checked }))
+                  }
+                />
+                skip-{k}
+              </label>
+            )
+          )}
+          <button disabled={busy} onClick={() => void saveSettings()}>
+            Save prefs
+          </button>
+
+          <h2>图层</h2>
           {project?.character?.name && (
             <p className="muted">
               {project.character.name}{" "}
               <span className="badge">{project.layers.length} layers</span>
             </p>
           )}
-          {(project?.layers ?? []).map((l) => (
-            <div className="layer" key={l.id}>
-              <div>{l.display_name}</div>
-              <div className="meta">
-                {l.semantic} · {l.side} · z={l.z_index} {l.status ?? ""}
+          <div className="layer-list">
+            {(project?.layers ?? []).map((l) => (
+              <div className="layer" key={l.id}>
+                <div>{l.display_name}</div>
+                <div className="meta">
+                  {l.semantic} · {l.side} · z={l.z_index}
+                </div>
               </div>
-            </div>
-          ))}
-          {!project && <p className="muted">Open a project to list layers.</p>}
+            ))}
+          </div>
         </aside>
 
-        <main className="panel" style={{ background: "var(--bg)" }}>
-          <h2>Preview</h2>
+        <main className="panel center">
+          <h2>步骤进度</h2>
+          <ul className="checklist">
+            {STEP_DEFS.map((s) => (
+              <li key={s.id} className={`step ${stepStatus[s.id]}`}>
+                <span className="dot" />
+                <span className="label">{s.label}</span>
+                <span className="status">{stepStatus[s.id]}</span>
+              </li>
+            ))}
+          </ul>
+
+          <h2>预览</h2>
           <div className="previews">
             {(["master", "recomposed", "segDebug"] as const).map((key) => {
               const url = project?.previewUrls?.[key];
@@ -254,66 +511,23 @@ export function App() {
                   {url ? (
                     <img src={`${url}&t=${Date.now()}`} alt={labels[key]} />
                   ) : (
-                    <div
-                      style={{
-                        aspectRatio: "1",
-                        display: "grid",
-                        placeItems: "center",
-                        color: "var(--muted)",
-                        fontSize: "0.8rem",
-                      }}
-                    >
-                      missing
-                    </div>
+                    <div className="missing">missing</div>
                   )}
                   <div className="label">{labels[key]}</div>
                 </div>
               );
             })}
           </div>
-
-          <h2 style={{ marginTop: "1.25rem" }}>Actions</h2>
-          <div className="row">
-            <button className="primary" disabled={busy} onClick={() => run("compile")}>
-              Compile
-            </button>
-            <button disabled={busy} onClick={() => run("validate")}>
-              Validate
-            </button>
-            <button disabled={busy} onClick={() => run("segment")}>
-              Segment
-            </button>
-            <button disabled={busy} onClick={() => run("doctor")}>
-              Doctor
-            </button>
-          </div>
-          <div className="row">
-            <label className="toggle">
-              feather
-              <input
-                type="number"
-                min={0}
-                max={16}
-                value={feather}
-                onChange={(e) => setFeather(Number(e.target.value))}
-                style={{ width: 64 }}
-              />
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={splitBilateral}
-                onChange={(e) => setSplitBilateral(e.target.checked)}
-              />
-              split-bilateral
-            </label>
-          </div>
-          <h2>Log</h2>
-          <div className="log">{log || "Ready."}</div>
         </main>
 
-        <aside className="panel">
-          <h2>Validation report</h2>
+        <aside className="panel right">
+          <h2>Live log</h2>
+          <div className="log">
+            {log || "Ready. 导入设定图后点击「一键完成全部」。"}
+            <div ref={logEndRef} />
+          </div>
+
+          <h2>产物 / Artifacts</h2>
           {passed !== null && (
             <p>
               <span className={`badge ${passed ? "ok" : "fail"}`}>
@@ -321,7 +535,25 @@ export function App() {
               </span>
             </p>
           )}
-          <div className="report">{validationJson}</div>
+          <ul className="artifacts">
+            {artifacts.length === 0 && (
+              <li className="muted">Run All 完成后显示 PSD / AutoLive2d / psd2live 路径</li>
+            )}
+            {artifacts.map(([k, v]) => (
+              <li key={k}>
+                <strong>{k}</strong>
+                <code>{v}</code>
+              </li>
+            ))}
+          </ul>
+
+          <h2>pipeline_report</h2>
+          <div className="report">
+            {pipelineSummary ||
+              (project?.pipelineReport
+                ? JSON.stringify(project.pipelineReport, null, 2)
+                : "// 完成后写入 validation/pipeline_report.json")}
+          </div>
         </aside>
       </div>
     </div>
