@@ -1,0 +1,9 @@
+{
+  "id": "char_0191e8a0-0000-4000-8000-000000000001",
+  "name": "Simple Synthetic",
+  "version": "0.1",
+  "description": "Hand-authored RGBA layers for M0 pipeline smoke test",
+  "art_style": "flat geometric synthetic",
+  "canvas": { "width": 256, "height": 256 },
+  "tags": ["synthetic", "m0", "example"]
+}

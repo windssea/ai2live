@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai2live.dev/schemas/layer-manifest.schema.json",
+  "title": "LayerManifest",
+  "description": "Machine-readable layered character plan. LEFT/RIGHT are character-own sides, not viewer sides.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "character_id", "canvas", "layers"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "const": "0.1" },
+    "character_id": { "type": "string", "minLength": 1 },
+    "master_asset_id": { "type": "string" },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "spatial_references": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SpatialReference" }
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/LayerNode" }
+    },
+    "occlusion_edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/OcclusionEdge" }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "layer_ids"],
+        "properties": {
+          "name": { "type": "string" },
+          "layer_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Side": {
+      "type": "string",
+      "enum": ["LEFT", "RIGHT", "CENTER", "BOTH", "NONE"],
+      "description": "Character-own left/right (not observer)"
+    },
+    "SourceType": {
+      "type": "string",
+      "enum": [
+        "master_pixels",
+        "master_plus_completion",
+        "full_character_differential",
+        "generated_standalone",
+        "clone",
+        "user_asset",
+        "fallback_separator"
+      ]
+    },
+    "CanvasBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "w": { "type": "number", "minimum": 0, "maximum": 1 },
+        "h": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "SpatialReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "view_rect_canvas", "source_pixel_rect", "output_size"],
+      "properties": {
+        "id": { "type": "string" },
+        "view_rect_canvas": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" },
+          "description": "[x, y, w, h] in canvas-normalized [0,1]"
+        },
+        "source_pixel_rect": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "integer" },
+          "description": "[x, y, w, h] in source pixels"
+        },
+        "output_size": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "LayerSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "$ref": "#/$defs/SourceType" },
+        "master_asset_id": { "type": "string" },
+        "visible_mask_id": { "type": "string" },
+        "completion_asset_id": { "type": "string" },
+        "asset_path": {
+          "type": "string",
+          "description": "Relative path to RGBA PNG for M0 hand-authored assets"
+        },
+        "clone_of": { "type": "string" }
+      }
+    },
+    "LayerNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "semantic", "side", "z_index", "source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "semantic": { "type": "string", "minLength": 1 },
+        "subtype": { "type": "string" },
+        "side": { "$ref": "#/$defs/Side" },
+        "index": { "type": "integer", "minimum": 0 },
+        "parent": { "type": ["string", "null"] },
+        "z_index": { "type": "integer" },
+        "canvas_bounds": { "$ref": "#/$defs/CanvasBounds" },
+        "pivot_hint": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number" }
+        },
+        "motion_owner_hint": { "type": "string" },
+        "physics_hint": { "type": "string" },
+        "source": { "$ref": "#/$defs/LayerSource" },
+        "overlap": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required_with": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "minimum_px_at_master_resolution": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "generator": { "type": "string" },
+            "prompt_hash": { "type": "string" },
+            "seed": { "type": ["integer", "null"] },
+            "created_revision": { "type": "string" }
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["DRAFT", "READY", "VALIDATED", "FAILED"]
+        },
+        "group": {
+          "type": "string",
+          "description": "PSD group name e.g. FRONT_HAIR"
+        }
+      }
+    },
+    "OcclusionEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["occluder", "occludee"],
+      "properties": {
+        "id": { "type": "string" },
+        "occluder": { "type": "string" },
+        "occludee": { "type": "string" },
+        "region_hint": { "$ref": "#/$defs/CanvasBounds" },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}
